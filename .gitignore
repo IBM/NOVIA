@@ -32,4 +32,4 @@
 *.app
 
 # Folders
-bin/
+build/
