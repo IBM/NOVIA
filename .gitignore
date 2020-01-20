@@ -6,6 +6,7 @@
 *.lo
 *.o
 *.obj
+*.bin
 
 # Precompiled Headers
 *.gch
@@ -30,6 +31,10 @@
 *.exe
 *.out
 *.app
+
+# LLVM
+*.bc
+*.ll
 
 # Folders
 build/
