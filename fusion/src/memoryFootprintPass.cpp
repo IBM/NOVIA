@@ -51,7 +51,7 @@ namespace {
 	struct mergeBBList : public FunctionPass {
 		static char ID;
 		set<string> bbs;
-		Function *oFunc;
+		Function *Foff;
 
 		mergeBBList() : FunctionPass(ID) {}
 
@@ -69,7 +69,7 @@ namespace {
 		bool runOnFunction(Function &F) override {
 			vector<BasicBlock*> bbList;
 			BasicBlock *auxBBptr = NULL;
-			BasicBlock *C;
+			BasicBlock *C, *auxC;
 
 			// Search BB to merge
 			for(BasicBlock &BB: F){
@@ -79,12 +79,16 @@ namespace {
 			}
 
 			if(bbList.size())
-				C = BasicBlock::Create(F.getContext(),"n",&F);
+				C = BasicBlock::Create(F.getContext(),"");
 
 			for(auto& BB: bbList){
 				errs() << "Merging " << BB->getName() << " and " << C->getName() << '\n';
-				errs() << " A:\n" << *BB << "B:\n" << *C << '\n';
-				C = mergeBBs(*BB,*C);
+				errs() << " A:\n" << *BB << "B:\n" << '\n';
+				for (Instruction &I : *C)
+					errs() << I << '\n';
+				auxC = mergeBBs(*BB,*C);
+				delete C;
+				C = auxC;
 				//for(succ_iterator sit = succ_begin(BB); sit != succ_end(BB);
 				//	++sit)
 				//	sit->removePredecessor(BB);
@@ -104,12 +108,20 @@ namespace {
 					}
 				}*/
 			}
+			if(bbList.size()){
+				Foff = createOffload(*C,F.getParent());
+				insertCall(Foff,&bbList);
+				//delete C;
+			}
 
+
+			errs()<<  "Correctly Exited\n";
 			// We remove merged block from the code
-			for(auto& BB: bbList)
-				BB->removeFromParent();
+			//for(auto& BB: bbList)
+			//	BB->removeFromParent();
+			F.dump();
 			return false;
-			errs() << F << '\n';
+			//errs() << F << '\n';
 		}
 	};
 
