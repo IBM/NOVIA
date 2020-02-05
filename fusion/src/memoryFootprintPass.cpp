@@ -42,8 +42,15 @@ namespace {
 		memoryFootprint() : FunctionPass(ID) {}
 
 		bool runOnFunction(Function &F) override {
-			for(BasicBlock &BB: F)
-				errs() << BB.getName() << '\n';
+			LLVMContext &Context = F.getContext();
+			SmallVector<pair<unsigned, MDNode*>, 4> MDs;
+			F.getAllMetadata(MDs);
+			for( auto&MD : MDs){
+				if(MDNode *N = MD.second){
+					Constant* val = dyn_cast<ConstantAsMetadata>(dyn_cast<MDNode>(N->getOperand(0))->getOperand(0))->getValue();
+					errs() << F.getName() << " - " << cast<ConstantInt>(val)->getSExtValue() << "bits \n";
+				}
+			}
 		}
 	};
 
@@ -87,7 +94,7 @@ namespace {
 				for (Instruction &I : *C)
 					errs() << I << '\n';
 				auxC = mergeBBs(*BB,*C);
-				delete C;
+				freeBB(C);
 				C = auxC;
 				//for(succ_iterator sit = succ_begin(BB); sit != succ_end(BB);
 				//	++sit)

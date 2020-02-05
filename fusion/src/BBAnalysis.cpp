@@ -10,9 +10,6 @@
 void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
 			   SetVector<Value*> *LiveOut){
 	using ValueSet = SetVector<Value *>;
-	for(Instruction &I : BB){
-		errs() << I << '\n';
-	}
 	ArrayRef<BasicBlock*> BBs(&BB);
 	CodeExtractor CE = CodeExtractor(BBs);
 	//ValueSet LiveIn, LiveOut, Allocas;

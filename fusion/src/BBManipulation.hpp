@@ -15,6 +15,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/IR/ValueSymbolTable.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "llvm/IR/LegacyPassManager.h"
@@ -25,8 +26,10 @@
 using namespace llvm;
 using namespace std;
 
-bool is_mergeable(Instruction&, Instruction&);
+bool areInstMergeable(Instruction&, Instruction&);
+bool areOpsMergeable(Value*, Value*);
 BasicBlock* mergeBBs(BasicBlock&, BasicBlock&);
 Function* createOffload(BasicBlock&, Module*);
 bool insertCall(Function *F, vector<BasicBlock*> *bbList);
 void listBBInst(BasicBlock&);
+void freeBB(BasicBlock*);
