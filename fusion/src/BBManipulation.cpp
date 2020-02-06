@@ -112,9 +112,9 @@ BasicBlock* mergeBBs(BasicBlock &A, BasicBlock &B){
 						else if( opA->getType() == opB->getType()){
 							errs() << "Creating Select\n";
 							//Value *SelVal = UndefValue::get(builder.getInt1Ty());
-							Value *SelVal = new Argument(builder.getInt1Ty(),"sel1");
+							Value *SelVal = new Argument(builder.getInt1Ty());
 							//Value *SelI = SelectInst::Create(SelVal,opA,opB,"select",C);
-							SelI = builder.CreateSelect(SelVal,opA,opB,"sel2");
+							SelI = builder.CreateSelect(SelVal,opA,opB);
 							OpC = j;
 							//builder.CreateAdd(SelVal32,SelI);
 							//builder.Insert((Instruction*)SelI);
@@ -219,6 +219,11 @@ Function* createOffload(BasicBlock &BB, Module *Mod){
 	for(Value *V: LiveIn){
 		Inputs.push_back(V->getType());
 	}
+	// Input struct
+	StructType *Transfer = StructType::get(TheContext, Inputs);
+	vector<Type*> Aux;
+	Aux.push_back(Transfer);
+
 	//vector<Type *> Integers(1,Type::getInt32PtrTy(TheContext));
 	FunctionType *funcType = FunctionType::get(Builder.getInt32Ty(),
 			Inputs,false);
@@ -321,6 +326,7 @@ bool insertCall(Function *F, vector<BasicBlock*> *bbList){
 			}
 			++arg;
 		}
+
 		// Predecessor blocks change their branches to a function call
 		BasicBlock *BBpred = BB->getSinglePredecessor();
 		if(BBpred){
@@ -331,6 +337,18 @@ bool insertCall(Function *F, vector<BasicBlock*> *bbList){
 						I->getOperand(0);
 			}
 			Builder.SetInsertPoint(I);
+
+			// Sending Data to Memory
+			vector<AllocaInst*> Allocas;
+			for(auto &O: F->args()){
+				Allocas.push_back(Builder.CreateAlloca(O.getType()));
+			}
+			for(int j = 0; j < Inputs.size() ; ++j){
+				Builder.CreateStore(Inputs[j],Allocas[j]);
+			}
+
+
+
 			// Insert Call to offload function
 			Builder.CreateCall((Value*)F,Inputs);
 
