@@ -94,7 +94,7 @@ namespace {
 				for (Instruction &I : *C)
 					errs() << I << '\n';
 				auxC = mergeBBs(*BB,*C);
-				freeBB(C);
+				delete C;
 				C = auxC;
 				//for(succ_iterator sit = succ_begin(BB); sit != succ_end(BB);
 				//	++sit)

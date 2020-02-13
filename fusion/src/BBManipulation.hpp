@@ -32,4 +32,3 @@ BasicBlock* mergeBBs(BasicBlock&, BasicBlock&);
 Function* createOffload(BasicBlock&, Module*);
 bool insertCall(Function *F, vector<BasicBlock*> *bbList);
 void listBBInst(BasicBlock&);
-void freeBB(BasicBlock*);

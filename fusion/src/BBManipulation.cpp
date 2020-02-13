@@ -1,24 +1,6 @@
 #include "BBManipulation.hpp"
 
 /**
- * Frees BasicBlock and pointer
- *
- * @param BB BasicBlock to free
- * @return
- */
-void freeBB(BasicBlock* BB){
-	for(auto &I: *BB){
-		I.dropAllReferences();
-	}
-	if(BB->getParent())
-		BB->eraseFromParent();
-	else
-		delete BB;
-	return;
-}
-
-
-/**
  * Checks if two instructions are mergeable
  *
  * @param *Ia Instruction to check
@@ -220,7 +202,7 @@ Function* createOffload(BasicBlock &BB, Module *Mod){
 		Inputs.push_back(V->getType());
 	}
 	// Input struct
-	StructType *Transfer = StructType::get(TheContext, Inputs);
+	StructType *Transfer = StructType::create(TheContext, Inputs);
 	vector<Type*> Aux;
 	Aux.push_back(Transfer);
 
@@ -232,6 +214,14 @@ Function* createOffload(BasicBlock &BB, Module *Mod){
 
 	// Insert Fused Basic Block
 	BB.insertInto(f);
+
+	errs() << "ok " << funcType->getNumParams() << "\n";
+	errs() << "ok " << Transfer->getNumElements() << "\n";
+	errs() << "ok " << ((StructType*)f->getArg(0))->getNumElements() << "\n";
+	for(auto &Elem : ((StructType*)f->getArg(0))->elements()){
+		errs() << Elem;
+	}
+	errs() << "ok\n";
 
 	for(int i=0; i<LiveIn.size();++i){
 		for(auto &I: BB){
@@ -310,18 +300,40 @@ Function* createOffload(BasicBlock &BB, Module *Mod){
 bool insertCall(Function *F, vector<BasicBlock*> *bbList){
 	LLVMContext &TheContext = F->getContext();
 	static IRBuilder<> Builder(TheContext);
-	int i = 0, arg = 0;
+	vector<Value*> Inputs;
+	vector<GlobalVariable*> SafeInputs;
+	vector<GlobalVariable*> RestoredInputs;
+
+	// Restored Values must replace LiveIn values
+	map<BasicBlock*,pair<Value*,Value*> > restoreMap;
+	int i = 0; // Pointer to BB in bbList being processed
+
+	// Create Safe Globals for Input vectors
+	// TODO: Do not copy select variables
+	for(auto &O : F->args()){
+		SafeInputs.push_back(new GlobalVariable(O.getType(),true,
+					GlobalValue::PrivateLinkage));
+
+	}
+
+
 	for(auto BB: *bbList){
+		int arg = 0;
 		ValueSymbolTable *VS = BB->getValueSymbolTable();
 		errs() << "Next Block\n";
-		vector<Value*> Inputs;
 
 		// Search for Inputs and assign as arguments
 		for(auto &O: F->args()){
+			// If Input is within BB visbility assign Value, otherwise assign
+			// dummy Input
 			if(Value *V = VS->lookup(O.getName()))
 				Inputs.push_back(V);
+			else if(arg < F->getFunctionType()->getNumParams() - bbList->size()){
+				Inputs.push_back(SafeInputs[arg]);
+			}
+			// Once we reach selection variables, assign proper value
 			else{
-				V = Builder.getInt1(i==arg);
+				V = Builder.getInt1(arg==i+(F->getFunctionType()->getNumParams()-bbList->size()));
 				Inputs.push_back(V);
 			}
 			++arg;
@@ -330,32 +342,67 @@ bool insertCall(Function *F, vector<BasicBlock*> *bbList){
 		// Predecessor blocks change their branches to a function call
 		BasicBlock *BBpred = BB->getSinglePredecessor();
 		if(BBpred){
-			//Inputs.push_back(*BBpred->begin()->op_begin());
 			Instruction *I = BBpred->getTerminator();
-			if(((BranchInst*)I)->isConditional()){
-					Inputs[1+i] =
-						I->getOperand(0);
-			}
 			Builder.SetInsertPoint(I);
 
 			// Sending Data to Memory
 			vector<AllocaInst*> Allocas;
-			for(auto &O: F->args()){
+			vector<pair<Value*, Value*> > RestoreInst;
+			/*for(auto &O: F->args()){
 				Allocas.push_back(Builder.CreateAlloca(O.getType()));
+			}*/
+			for(int j = 0; j < Inputs.size() - (bbList->size()-1) ; ++j){
+				//Builder.CreateStore(Inputs[j],Allocas[j]);
+				if(Inputs[j]->getType()->isPointerTy()){
+					//RestoredInputs.push_back(
+					//		new GlobalVariable(Inputs[j]->getType(),true,
+					//			GlobalValue::PrivateLinkage));
+					Allocas.push_back(Builder.CreateAlloca(((PointerType*)Inputs[j]->getType())->getElementType()));
+					Builder.CreateStore(Builder.CreateLoad(Inputs[j]),*Allocas.rbegin());
+					RestoreInst.push_back(pair<Value*,Value*>(Inputs[j],*Allocas.rbegin()));
+				}
 			}
-			for(int j = 0; j < Inputs.size() ; ++j){
-				Builder.CreateStore(Inputs[j],Allocas[j]);
-			}
-
-
 
 			// Insert Call to offload function
 			Builder.CreateCall((Value*)F,Inputs);
 
 			// Predecessor blocks now jump to successors of offloaded BB
 			BasicBlock *BBsucc = BB->getSingleSuccessor();
+			BasicBlock *BBWrongSucc;
 			I = BBpred->getTerminator();
-			Builder.CreateBr(BBsucc);
+
+			if(((BranchInst*)I)->isConditional()){
+				// Restoratio Block in case wrong path is taken
+				BasicBlock *RestoreBB = BasicBlock::Create(TheContext,
+						"restore"+BB->getName(),BB->getParent());
+				if ((*bbList)[i] == I->getSuccessor(0)){
+					BBWrongSucc = I->getSuccessor(1);
+					Builder.CreateCondBr(((BranchInst*)I)->getCondition(),BBsucc,RestoreBB);
+				}
+				else{
+					BBWrongSucc = I->getSuccessor(0);
+					Builder.CreateCondBr(((BranchInst*)I)->getCondition(),BBsucc,RestoreBB);
+				}
+				// Restore memory contents in case of wrong path taken
+				// in a new Basic Block
+				//Instruction *Isucc = BBWrongSucc->getFirstNonPHIOrDbg();
+				Builder.SetInsertPoint(RestoreBB);
+				//for(int j = 0; j < Inputs.size() - (bbList->size()-1); ++j){
+				for(int j = 0;j < RestoreInst.size(); ++j){
+					//Value *RestoredI = Builder.CreateLoad(Allocas[j]);
+					Value *RestoredI = Builder.CreateLoad(RestoreInst[j].second);
+					Builder.CreateStore(RestoredI,RestoreInst[j].first);
+					//restoreMap[BBWrongSucc] = RestoreInst[j];
+					//restoreMap[BBWrongSucc] = pair<Value*,Value*> (Inputs[j],RestoredI);
+					//Inputs[j]->replaceUsesWithIf(RestoredI,[BBWrongSucc](Use &U)
+					//		{return ((Instruction*)U.getUser())->getParent() ==
+					//		BBWrongSucc;});
+				}
+				Builder.CreateBr(BBWrongSucc);
+			}
+			else{
+				Builder.CreateBr(BBsucc);
+			}
 			I->eraseFromParent();
 			verifyFunction(*F);
 			Inputs.clear();
@@ -365,6 +412,12 @@ bool insertCall(Function *F, vector<BasicBlock*> *bbList){
 		// TODO: Add wrappers to gather/scatter the data
 
 		++i;
+	}
+	// Remap restored Values in each BB
+	for(auto Elem : restoreMap){
+		Elem.second.first->replaceUsesWithIf(Elem.second.second,
+				[Elem](Use &U){return
+				((Instruction*)U.getUser())->getParent() == Elem.first;});
 	}
 	return true;
 }

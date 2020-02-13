@@ -29,10 +29,6 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
 	return;
 }
 
-void doNothing(SetVector<Value*> A){
-	return;
-}
-
 void buildDAG(BasicBlock &BB, DirectedGraph<SimpleDDGNode,DDGEdge> *G){
 	for(Instruction &I : BB){
 		SimpleDDGNode N = SimpleDDGNode(I);

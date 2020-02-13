@@ -20,5 +20,4 @@ using namespace llvm;
 using namespace std;
 
 void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
-void doNothing(SetVector<Value*>);
 void buildDAG(BasicBlock&,DirectedGraph<SimpleDDGNode,DDGEdge>*);

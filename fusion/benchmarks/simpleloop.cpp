@@ -9,15 +9,15 @@ int main(int argn, char **argc){
 	}
 
 	int a = atoi(argc[1]) ;
-	if (a%3 == 1){
-		a *= 1;
+	for(int i=0; i < 100; ++i)
+		++a;
+
+	int i = 0;
+	while(i < 100){
+		++a;
+		++i;
 	}
-	else if (a%3 ==2) {
-		a *= 2;
-	}
-	else if(a%3 == 0){
-		a *= 3;
-	}
+
 	cout << "Result: " << a << endl;
 	return 0;
 }
