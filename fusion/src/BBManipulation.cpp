@@ -1,7 +1,7 @@
 #include "BBManipulation.hpp"
 
 /**
- * Checks if two instructions are mergeable
+ * Checks if two instructions are mergeable, returns true if they are
  *
  * @param *Ia Instruction to check
  * @param *Ib Instruction to check
@@ -10,28 +10,12 @@
 bool areInstMergeable(Instruction &Ia, Instruction &Ib){
 	// Same opcode
 	bool opcode = Ia.getOpcode() == Ib.getOpcode();
-	bool sameIm = true;
-	//errs() << Ia << Ib << "\n";
-	//errs() << "Merging"  << opcode << '\n';
-	// If immediates  are equal
-	for(int i = 0; i < Ia.getNumOperands(); ++i){
-		Value *opA = Ia.getOperand(i);
-		for(int j = 0; j < Ib.getNumOperands(); ++j){
-			Value *opB = Ib.getOperand(j);
-			//errs() << *opA << *opB << '\n';
-			if(isa<ConstantInt>(opA) && isa<ConstantInt>(opB)){
-				sameIm = opA == opB;
-				//errs() << "success\n";
-			}
-		}
-	}
-	// Same operands
-	// operands come from same operation
+
 	return opcode;
 }
 
 /**
- * Checks if operands can be merged
+ * Checks if operands can be merged, returns true if they are
  *
  * @param &Ia instruction to check
  * @param &Ib instruction to check
@@ -52,7 +36,6 @@ bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B){
 		// If operands come from mergeable Instructions
 		isInstMerg = areInstMergeable(*(Instruction*)opA,*(Instruction*)opB);
 	}
-
 	return sameConstValue || isLiveIn || isInstMerg;
 }
 
@@ -61,8 +44,9 @@ bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B){
  *
  * @param *A BasicBlock to merge
  * @param *B BasicBlock to merge
- * @param *C resultant BasicBlock
- * @return success/failure
+ 
+ * @return Returns a newly created BasicBlock that contains a fused list
+ * of instructions from A and B. The block does not have a terminator.
  */
 BasicBlock* mergeBBs(BasicBlock &A, BasicBlock &B){
 	BasicBlock *C = BasicBlock::Create(A.getContext(),A.getName()+B.getName());
@@ -82,24 +66,22 @@ BasicBlock* mergeBBs(BasicBlock &A, BasicBlock &B){
 		Value *SelI = NULL;
 		if (!Ia.isTerminator()){
 			for(Instruction &Ib : B){
+				// Check if instructions can be merged
 				if(areInstMergeable(Ia,Ib)){
 					pendingB[i] = false;
 					for(int j = 0; j < Ia.getNumOperands(); ++j){
 						Value *opA = Ia.getOperand(j);
 						Value *opB = Ib.getOperand(j);
+						// Check if operands are mergeable
 						if(areOpsMergeable(opA,opB,&A,&B)){
 
 						}
-						//else if( isa<ConstantInt>(opA) && isa<ConstantInt>(opB)){
+						//  Operands cannot be merged, add select inst in case
+						//  they are the same type
 						else if( opA->getType() == opB->getType()){
-							errs() << "Creating Select\n";
-							//Value *SelVal = UndefValue::get(builder.getInt1Ty());
 							Value *SelVal = new Argument(builder.getInt1Ty());
-							//Value *SelI = SelectInst::Create(SelVal,opA,opB,"select",C);
 							SelI = builder.CreateSelect(SelVal,opA,opB);
 							OpC = j;
-							//builder.CreateAdd(SelVal32,SelI);
-							//builder.Insert((Instruction*)SelI);
 						}
 						else {
 						}
@@ -108,21 +90,22 @@ BasicBlock* mergeBBs(BasicBlock &A, BasicBlock &B){
 				}
 				++i;
 			}
+			// Adding instruction from A. If merged, check if select was created
+			// and set not merged operand as a result of the select inst.
 			Instruction *newInstA = Ia.clone();
 			builder.Insert(newInstA);
 			if(SelI)
 				newInstA->setOperand(OpC,SelI);
 			SubOp[cast<Value>(&Ia)] = cast<Value>(newInstA);
 		}
-		errs() << "BB Build\n";
-		for(auto &I:*C)
-			errs() << I << '\n';
 	}
+
 	// Left-over instructions from B are added now
 	unsigned i = 0;
 	for(Instruction &Ib : B){
 		if (pendingB[i] and !Ib.isTerminator() ){
 			for(auto U = Ib.use_begin(); U != Ib.use_end() & pendingB[i]; ++U){
+				// This deals with the insertion point
 				// Insert those instructions before their uses
 				if(((Value*)U->getUser())->isUsedInBasicBlock(C)){
 					Instruction *newInstB = Ib.clone();
@@ -144,25 +127,14 @@ BasicBlock* mergeBBs(BasicBlock &A, BasicBlock &B){
 
 	// Target operands change name when clonned
 	// Here we remap them to their new names to preserve producer-consumer 
-	for(auto &b : SubOp)
-		errs() << *b.first << " " << *b.second << '\n';
 	for(Instruction &Ic : *C){
 		for(int j = 0; j < Ic.getNumOperands(); ++j){
 			Value *Vc = Ic.getOperand(j);
-			//errs() << "1: " << *Vc << "\n";
-			if ( SubOp.count(Vc) ){
-				//errs() << "2 " << *SubOp[Vc] << '\n';
-					Ic.setOperand(j,SubOp[Vc]);
-					//Vc = SubOp[Vc];
-					//Vc->replaceAllUsesWith(SubOp[Vc]);
-				}
-				else if ( ConstantInt *CI = dyn_cast<ConstantInt>(Vc)){
-					//Ic.setOperand(j,builder.getInt32(CI->getSExtValue()));
-				}
-			}
+			if(SubOp.count(Vc))
+				Ic.setOperand(j,SubOp[Vc]);
 		}
+	}
 
-	errs()<< "Inst :\n";
 	for(auto &I : *C)
 		errs() << I << '\n';
 	return C;
@@ -190,23 +162,24 @@ void listBBInst(BasicBlock &BB){
  * @return Pointer to a function that executes BB
  */
 Function* createOffload(BasicBlock &BB, Module *Mod){
-	LLVMContext &TheContext = BB.getContext();
-	static IRBuilder<> Builder(TheContext);
+	LLVMContext &Context = BB.getContext();
+	static IRBuilder<> Builder(Context);
 	vector<Type *> Inputs;
 	SetVector<Value*> LiveIn, LiveOut;
 	liveInOut(BB, &LiveIn, &LiveOut);
 
 
 	// Instantiate function
+	// Instantate all LiveIn values as Inputs
 	for(Value *V: LiveIn){
 		Inputs.push_back(V->getType());
 	}
 	// Input struct
-	StructType *Transfer = StructType::create(TheContext, Inputs);
+	StructType *Transfer = StructType::create(Context, Inputs);
 	vector<Type*> Aux;
 	Aux.push_back(Transfer);
 
-	//vector<Type *> Integers(1,Type::getInt32PtrTy(TheContext));
+	//vector<Type *> Integers(1,Type::getInt32PtrTy(Context));
 	FunctionType *funcType = FunctionType::get(Builder.getInt32Ty(),
 			Inputs,false);
 	Function *f = Function::Create(funcType,
@@ -236,14 +209,6 @@ Function* createOffload(BasicBlock &BB, Module *Mod){
 		f->getArg(i)->setName(LiveIn[i]->getName());
 	}
 
-	/*auto a = BB.begin();
-	a++;
-	//a->setOperand(1,Builder.getInt32(4));
-	//errs() << "orig " << a << " old " << *a->getOperand(1)->getName() << " " << a->getOperand(1)->getType() << '\n'; 
-	a++;
-	a->eraseFromParent();
-	a = BB.begin();
-	a->setOperand(0,(Value*)f->arg_begin());*/
 	// TODO: Point all LiveOut parameters to return type
 
 	Builder.SetInsertPoint(&BB);
@@ -260,19 +225,20 @@ Function* createOffload(BasicBlock &BB, Module *Mod){
 	int footprint = 0;
 	for(auto &A: f->args()){
 		if(A.getType()->isPtrOrPtrVectorTy()){
-			footprint += ((PointerType*)A.getType())->getElementType()->getScalarSizeInBits();
+			footprint += ((PointerType*)A.getType())->getElementType()
+				->getScalarSizeInBits();
 		}
 		else{
 			footprint += A.getType()->getScalarSizeInBits();
 		}
 	}
-	MDNode* temp = MDNode::get(TheContext, ConstantAsMetadata::get(ConstantInt::get(
-					TheContext, llvm::APInt(64,footprint,false))));
-	MDNode* N = MDNode::get(TheContext, temp);
+	MDNode* temp = MDNode::get(Context,ConstantAsMetadata::get(
+				ConstantInt::get(Context,llvm::APInt(64,footprint,false))));
+	MDNode* N = MDNode::get(Context, temp);
 	f->setMetadata("memoryFootprint",N);
 
 	// Output Result
-	Module *NewMod = new Module("offload_mod",TheContext);
+	Module *NewMod = new Module("offload_mod",Context);
 	/*Function *Newf = Function::Create(funcType,
 			Function::ExternalLinkage,"offload_func",NewMod);*/
 	ValueToValueMapTy Vmap;
@@ -298,8 +264,8 @@ Function* createOffload(BasicBlock &BB, Module *Mod){
  * @return true if success
  */
 bool insertCall(Function *F, vector<BasicBlock*> *bbList){
-	LLVMContext &TheContext = F->getContext();
-	static IRBuilder<> Builder(TheContext);
+	LLVMContext &Context = F->getContext();
+	static IRBuilder<> Builder(Context);
 	vector<Value*> Inputs;
 	vector<GlobalVariable*> SafeInputs;
 	vector<GlobalVariable*> RestoredInputs;
@@ -348,18 +314,14 @@ bool insertCall(Function *F, vector<BasicBlock*> *bbList){
 			// Sending Data to Memory
 			vector<AllocaInst*> Allocas;
 			vector<pair<Value*, Value*> > RestoreInst;
-			/*for(auto &O: F->args()){
-				Allocas.push_back(Builder.CreateAlloca(O.getType()));
-			}*/
 			for(int j = 0; j < Inputs.size() - (bbList->size()-1) ; ++j){
-				//Builder.CreateStore(Inputs[j],Allocas[j]);
 				if(Inputs[j]->getType()->isPointerTy()){
-					//RestoredInputs.push_back(
-					//		new GlobalVariable(Inputs[j]->getType(),true,
-					//			GlobalValue::PrivateLinkage));
-					Allocas.push_back(Builder.CreateAlloca(((PointerType*)Inputs[j]->getType())->getElementType()));
-					Builder.CreateStore(Builder.CreateLoad(Inputs[j]),*Allocas.rbegin());
-					RestoreInst.push_back(pair<Value*,Value*>(Inputs[j],*Allocas.rbegin()));
+					Allocas.push_back(Builder.CreateAlloca(((PointerType*)
+									Inputs[j]->getType())->getElementType()));
+					Builder.CreateStore(Builder.CreateLoad(Inputs[j]),
+							*Allocas.rbegin());
+					RestoreInst.push_back(pair<Value*,Value*>(Inputs[j],
+								*Allocas.rbegin()));
 				}
 			}
 
@@ -373,30 +335,25 @@ bool insertCall(Function *F, vector<BasicBlock*> *bbList){
 
 			if(((BranchInst*)I)->isConditional()){
 				// Restoratio Block in case wrong path is taken
-				BasicBlock *RestoreBB = BasicBlock::Create(TheContext,
+				BasicBlock *RestoreBB = BasicBlock::Create(Context,
 						"restore"+BB->getName(),BB->getParent());
 				if ((*bbList)[i] == I->getSuccessor(0)){
 					BBWrongSucc = I->getSuccessor(1);
-					Builder.CreateCondBr(((BranchInst*)I)->getCondition(),BBsucc,RestoreBB);
+					Builder.CreateCondBr(((BranchInst*)I)->getCondition(),
+							BBsucc,RestoreBB);
 				}
 				else{
 					BBWrongSucc = I->getSuccessor(0);
-					Builder.CreateCondBr(((BranchInst*)I)->getCondition(),BBsucc,RestoreBB);
+					Builder.CreateCondBr(((BranchInst*)I)->getCondition(),
+							BBsucc,RestoreBB);
 				}
 				// Restore memory contents in case of wrong path taken
 				// in a new Basic Block
-				//Instruction *Isucc = BBWrongSucc->getFirstNonPHIOrDbg();
 				Builder.SetInsertPoint(RestoreBB);
-				//for(int j = 0; j < Inputs.size() - (bbList->size()-1); ++j){
 				for(int j = 0;j < RestoreInst.size(); ++j){
-					//Value *RestoredI = Builder.CreateLoad(Allocas[j]);
-					Value *RestoredI = Builder.CreateLoad(RestoreInst[j].second);
+					Value *RestoredI = Builder.CreateLoad(
+							RestoreInst[j].second);
 					Builder.CreateStore(RestoredI,RestoreInst[j].first);
-					//restoreMap[BBWrongSucc] = RestoreInst[j];
-					//restoreMap[BBWrongSucc] = pair<Value*,Value*> (Inputs[j],RestoredI);
-					//Inputs[j]->replaceUsesWithIf(RestoredI,[BBWrongSucc](Use &U)
-					//		{return ((Instruction*)U.getUser())->getParent() ==
-					//		BBWrongSucc;});
 				}
 				Builder.CreateBr(BBWrongSucc);
 			}
