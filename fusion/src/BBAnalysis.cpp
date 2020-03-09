@@ -1,5 +1,27 @@
 #include "BBAnalysis.hpp"
 
+
+/**
+ * Compute the memoryfootprint of a function and embedded that info as
+ * Metadata
+ *
+ * @param F Function to Analyze
+ * @return void
+ */
+void memoryFootprintF(Function *F){
+	LLVMContext &Context = F->getContext();
+	DataLayout DL  = F->getParent()->getDataLayout();
+	int footprint = 0;
+	for(auto &A: F->args()){
+		footprint += DL.getTypeSizeInBits(A.getType());
+	}
+	MDNode* temp = MDNode::get(Context,ConstantAsMetadata::get(
+				ConstantInt::get(Context,llvm::APInt(64,footprint,false))));
+	MDNode* N = MDNode::get(Context, temp);
+	F->setMetadata("stat.memoryFootprint",N);
+}
+
+
 /**
  * Computes the variables that are LiveIn in a BasicBlock
  *

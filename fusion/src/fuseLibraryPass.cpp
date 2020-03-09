@@ -42,6 +42,7 @@ namespace {
 		memoryFootprint() : FunctionPass(ID) {}
 
 		bool runOnFunction(Function &F) override {
+			memoryFootprintF(&F);
 			LLVMContext &Context = F.getContext();
 			SmallVector<pair<unsigned, MDNode*>, 4> MDs;
 			F.getAllMetadata(MDs);
