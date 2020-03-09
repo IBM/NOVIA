@@ -1,4 +1,4 @@
 add_library(fusionlib SHARED
-	memoryFootprintPass.cpp
+	fuseLibraryPass.cpp
 	BBAnalysis.cpp
 	BBManipulation.cpp)

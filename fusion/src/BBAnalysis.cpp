@@ -1,23 +1,42 @@
 #include "BBAnalysis.hpp"
 
+
+/**
+ * Compute the memoryfootprint of a function and embedded that info as
+ * Metadata
+ *
+ * @param F Function to Analyze
+ * @return void
+ */
+void memoryFootprintF(Function *F){
+	LLVMContext &Context = F->getContext();
+	DataLayout DL  = F->getParent()->getDataLayout();
+	int footprint = 0;
+	for(auto &A: F->args()){
+		footprint += DL.getTypeSizeInBits(A.getType());
+	}
+	MDNode* temp = MDNode::get(Context,ConstantAsMetadata::get(
+				ConstantInt::get(Context,llvm::APInt(64,footprint,false))));
+	MDNode* N = MDNode::get(Context, temp);
+	F->setMetadata("stat.memoryFootprint",N);
+}
+
+
 /**
  * Computes the variables that are LiveIn in a BasicBlock
  *
  * @param BB BasicBlock to Analyze
  * @return List of live out Variables
  */
-
 void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
 			   SetVector<Value*> *LiveOut){
 	using ValueSet = SetVector<Value *>;
-	for(Instruction &I : BB){
-		errs() << I << '\n';
-	}
 	ArrayRef<BasicBlock*> BBs(&BB);
 	CodeExtractor CE = CodeExtractor(BBs);
-	//ValueSet LiveIn, LiveOut, Allocas;
+
 	ValueSet Allocas;
 	ValueSet Li, Lo;
+
 	CE.findInputsOutputs((ValueSet&)*LiveIn,(ValueSet&)*LiveOut,Allocas);
 	for(Value *V: *LiveIn){
 		errs() << "Live In Value " << V->getName() << '\n';
@@ -29,10 +48,6 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
 	//	errs() << "Alloc " << V->getName() << '\n';
 	//}
 	//errs() << LiveIn << '\n';
-	return;
-}
-
-void doNothing(SetVector<Value*> A){
 	return;
 }
 

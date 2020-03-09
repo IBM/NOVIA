@@ -19,7 +19,4 @@
 using namespace llvm;
 using namespace std;
 
-void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
-void memoryFootprintBB(BasicBlock*);
-void memoryFootprintF(Function*);
-void buildDAG(BasicBlock&,DirectedGraph<SimpleDDGNode,DDGEdge>*);
+void drawBBGraph(BasicBlock*,ostream&);

@@ -19,6 +19,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 link_directories(${LLVM_LIBRARY_DIRS})
 
 add_compile_options(-fno-rtti)
+add_compile_options(-ggdb)
 
 
 add_subdirectory(src)

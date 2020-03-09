@@ -1,8 +1,16 @@
 include env.mk
 
-all: helloworld
+all: simplebr simplebr3 simpleloop
 
-helloworld: helloworld.cpp
+simplebr: simplebr.cpp
+	$(GXX) $(CFLAGS) $^ -o $@.bin 
+	$(CLANGXX) $(CFLAGS) $(CLANG_FLAGS) $^ -o $@.bc
+
+simplebr3: simplebr3.cpp
+	$(GXX) $(CFLAGS) $^ -o $@.bin 
+	$(CLANGXX) $(CFLAGS) $(CLANG_FLAGS) $^ -o $@.bc
+
+simpleloop: simpleloop.cpp
 	$(GXX) $(CFLAGS) $^ -o $@.bin 
 	$(CLANGXX) $(CFLAGS) $(CLANG_FLAGS) $^ -o $@.bc
 
