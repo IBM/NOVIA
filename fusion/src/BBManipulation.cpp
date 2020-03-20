@@ -428,10 +428,9 @@ void linkArgs(Value *selI, BasicBlock *BB){
   bool insertCall(Function *F, vector<BasicBlock*> *bbList){
     LLVMContext &Context = F->getContext();
     static IRBuilder<> Builder(Context);
-    vector<Value*> Inputs;
     vector<Type*> inputTypes;
     vector<GlobalVariable*> SafeInputs;
-    vector<GlobalVariable*> RestoredInputs;
+    vector<Instruction*> removeInst;
 
     // offloaded functions receive as input a pointer to input struct and
     // return a pointer to output struct
@@ -458,47 +457,48 @@ void linkArgs(Value *selI, BasicBlock *BB){
       SetVector<Value*> LiveIn, LiveOut;
       liveInOut(*BB, &LiveIn, &LiveOut);
 
-      // Predecessor blocks change their branches to a function call
       // TODO: Optimize if empty input/output
-      BasicBlock *BBpred = BB->getSinglePredecessor();
-      if(BBpred){
-        Instruction *I = BBpred->getTerminator();
-        Builder.SetInsertPoint(I);
-        Value *inStruct = Builder.CreateAlloca(inputType);
+      Instruction *I = BB->getFirstNonPHIOrDbg();
+      Builder.SetInsertPoint(I);
+      Value *inStruct = Builder.CreateAlloca(inputType);
 
-        // Send Input information
-        set<int> visited; // Mark those input positions that are filled
-        vector<AllocaInst*> Allocas;
-        vector<pair<Value*, Value*> > RestoreInst;
-        for(auto inV : LiveIn){
-          MDNode *N;
-          int pos;
-          // Set input parameters in their position inside the 
-          // input struct. Mark the position as filled. Record that there
-          // is metadata to be removed
-          if (N = ((Instruction*)inV)->getMetadata("fuse.livein.pos")){
-            pos = cast<ConstantInt>(cast<ConstantAsMetadata>
-                (N->getOperand(0))->getValue())->getSExtValue();
-            visited.insert(pos);
-            iMetadata.insert((Instruction*)inV);
-          }
-          // We should only enter here if parameter is function select
-          else{
-            errs() << "Missing positional information\n";
-          }
-
-          Value *inGEPData = Builder.CreateStructGEP(inStruct,pos);
-          Builder.CreateStore(inV,inGEPData);
-          // Keep safe restore values
-          if(inV->getType()->isPointerTy()){
-            Allocas.push_back(Builder.CreateAlloca(((PointerType*)
-                    inV->getType())->getElementType()));
-            Builder.CreateStore(Builder.CreateLoad(inV),
-                *Allocas.rbegin());
-            RestoreInst.push_back(pair<Value*,Value*>(inV,
-                  *Allocas.rbegin()));
-          }
+      // Send Input information
+      set<int> visited; // Mark those input positions that are filled
+      vector<AllocaInst*> Allocas;
+      vector<pair<Value*, Value*> > RestoreInst;
+      for(auto inV : LiveIn){
+        MDNode *N;
+        int pos;
+        // Set input parameters in their position inside the 
+        // input struct. Mark the position as filled. Record that there
+        // is metadata to be removed
+        if (N = ((Instruction*)inV)->getMetadata("fuse.livein.pos")){
+          pos = cast<ConstantInt>(cast<ConstantAsMetadata>
+               (N->getOperand(0))->getValue())->getSExtValue();
+          visited.insert(pos);
+          iMetadata.insert((Instruction*)inV);
         }
+        // We should only enter here if parameter is function select
+        else{
+          errs() << "Missing positional information\n";
+        }
+
+        Value *inGEPData = Builder.CreateStructGEP(inStruct,pos);
+        Builder.CreateStore(inV,inGEPData);
+        // Keep safe restore values
+        // We dropped speculation,. hence nothing to restore in memory
+        // TODO: Add specualtion and restora values if wrong path is taken
+        /*
+        if(inV->getType()->isPointerTy()){
+          Allocas.push_back(Builder.CreateAlloca(((PointerType*)
+            inV->getType())->getElementType()));
+          Builder.CreateStore(Builder.CreateLoad(inV),
+            *Allocas.rbegin());
+          RestoreInst.push_back(pair<Value*,Value*>(inV,
+            *Allocas.rbegin()));
+          }*/
+        }
+        
         // Send function selection
         // TODO: This has to be optimized. Now we search in the function for
         // the select instructions to find it's position and to which BB they 
@@ -511,20 +511,20 @@ void linkArgs(Value *selI, BasicBlock *BB){
             if (N = (Itemp.getMetadata("fuse.sel.pos"))){
               selBB = cast<Instruction>(cast<ValueAsMetadata>
                 (N->getOperand(0).get())->getValue())->getParent();
+            }
+				    if (N = (Itemp.getMetadata("fuse.livein.pos"))){
+					   pos = cast<ConstantInt>(cast<ConstantAsMetadata>
+					  	  	(N->getOperand(0))->getValue())->getSExtValue();
+            }
+            if(pos and selBB){
+  				    Value *inGEPData = Builder.CreateStructGEP(inStruct,pos);
+  				    Builder.CreateStore(Builder.getInt1(selBB==BB),inGEPData);
+           	  visited.insert(pos);
+              // In principle the following lines is not needed, since we are 
+              // droping the block all together, but just in case
+					    iMetadata.insert(&Itemp);
+            }
           }
-				  if (N = (Itemp.getMetadata("fuse.livein.pos"))){
-					  pos = cast<ConstantInt>(cast<ConstantAsMetadata>
-						  	(N->getOperand(0))->getValue())->getSExtValue();
-          }
-          if(pos and selBB){
-  				  Value *inGEPData = Builder.CreateStructGEP(inStruct,pos);
-  				  Builder.CreateStore(Builder.getInt1(selBB==BB),inGEPData);
-           	visited.insert(pos);
-            // In principle the following lines is not needed, since we are 
-            // droping the block all together, but just in case
-					  iMetadata.insert(&Itemp);
-          }
-        }
 /*
 			int iOffset = ((StructType*)inputType)->getNumElements()
 				-(bbList->size()-1);
@@ -545,57 +545,37 @@ void linkArgs(Value *selI, BasicBlock *BB){
 			}
 
 			// Insert Call to offload function
-			Builder.CreateCall((Value*)F,ArrayRef<Value*>(inStruct));
+			Value *outStruct = Builder.CreateCall((Value*)F,ArrayRef<Value*>(inStruct));
+      
+      // Removing the offloaded instructions
+      // Avoid removing the terminator
+      auto rI = BB->rbegin();
+      rI++;
+      while(&(*rI) != (Instruction*)outStruct){ 
+        removeInst.push_back(&(*rI));
+        rI++;
+      }
 
-			// Predecessor blocks now jump to successors of offloaded BB
-			BasicBlock *BBsucc = BB->getSingleSuccessor();
-			BasicBlock *BBWrongSucc;
-			I = BBpred->getTerminator();
+      // If we have liveOut values we must now fill them with the function
+      // computed ones and discard the instructions from this offloaded BB
+      vector<AllocaInst*> oAllocas;
+      Value *lastLoad;
+      for(int arg = 0; arg < LiveOut.size(); ++arg){
+        Value *outGEPData = Builder.CreateStructGEP(outStruct,arg);
+        Value *out = Builder.CreateLoad(LiveOut[arg]->getType(),outGEPData);
+        LiveOut[arg]->replaceAllUsesWith(out);
+        lastLoad = out;
+      }
 
       // We are dropping for now the speculation capability. It makes things 
       // simpler.
       // TODO: Execute speculatvely, and restore the values that changed in
       // memory
-			if(((BranchInst*)I)->isConditional()){
-				// Restoration Block in case wrong path is taken
-				BasicBlock *RestoreBB = BasicBlock::Create(Context,
-						"restore"+BB->getName(),BB->getParent());
-				if ((*bbList)[i] == I->getSuccessor(0)){
-					BBWrongSucc = I->getSuccessor(1);
-					Builder.CreateCondBr(((BranchInst*)I)->getCondition(),
-							BBsucc,RestoreBB);
-				}
-				else{
-					BBWrongSucc = I->getSuccessor(0);
-					Builder.CreateCondBr(((BranchInst*)I)->getCondition(),
-							BBsucc,RestoreBB);
-				}
-				// Restore memory contents in case of wrong path taken
-				// in a new Basic Block
-				Builder.SetInsertPoint(RestoreBB);
-				for(int j = 0;j < RestoreInst.size(); ++j){
-					Value *RestoredI = Builder.CreateLoad(
-							RestoreInst[j].second);
-					Builder.CreateStore(RestoredI,RestoreInst[j].first);
-				}
-				Builder.CreateBr(BBWrongSucc);
-			}
-			else{
-				Builder.CreateBr(BBsucc);
-			}
-			I->eraseFromParent();
-			verifyFunction(*F);
-			Inputs.clear();
-		}
-		// TODO: Add wrappers to gather/scatter the data
-
 		++i;
 	}
 
-	// Remove offloaded BBs
-  for(auto BB: *bbList)
-		BB->eraseFromParent();
-
+  for(auto I: removeInst)
+    I->eraseFromParent();
 	// TODO: Should we clean metadata like this?
 	for(auto I: iMetadata)
 		I->dropUnknownNonDebugMetadata();
