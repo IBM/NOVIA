@@ -12,6 +12,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IRBuilder.h"
@@ -34,4 +35,6 @@ Function* createOffload(BasicBlock&, Module*);
 bool insertCall(Function *F, vector<BasicBlock*> *bbList);
 void listBBInst(BasicBlock&);
 void linkOps(Value*,Value*);
-void linkPositionalLiveIn(BasicBlock *BB);
+void linkLiveOut(Value *, Value*);
+void linkPositionalLiveInOut(BasicBlock *BB);
+void separateBr(BasicBlock *BB);

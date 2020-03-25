@@ -78,8 +78,10 @@ namespace {
       // Search BB to merge
       for(Function &F: M)
 			  for(BasicBlock &BB: F)
-		  		if(bbs.count(BB.getName()))
+		  		if(bbs.count(BB.getName())){
+            separateBr(&BB);
 		  			bbList.push_back(&BB);
+          }
 
 			if(bbList.size())
 				C = BasicBlock::Create(M.getContext(),"");

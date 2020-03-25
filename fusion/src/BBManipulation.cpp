@@ -1,13 +1,82 @@
 #include "BBManipulation.hpp"
 
 
+
 /**
- * Assings positional arguments to LiveIn variables and stores those in 
+ * Manages the number of times this instructions was merged
+ *
+ * @param *I Merged Instruction to annotate
+ */
+// TODO: Find a more efficient way to increment integer metadata
+void annotateMerge(Instruction *I){
+  MDNode *N;
+  long merged = 1;
+  if( N = (I->getMetadata("fuse.merged"))){
+    merged += cast<ConstantInt>(cast<ConstantAsMetadata>
+		 	  	(N->getOperand(0))->getValue())->getSExtValue();
+  }
+  N = MDNode::get(I->getParent()->getContext(),ConstantAsMetadata::get(
+	  ConstantInt::get(I->getParent()->getContext(),llvm::APInt(64,merged,false))));
+	I->setMetadata("fuse.merged",N);
+  return;
+}
+
+
+
+
+/**
+ * Creates safe variables for inputs not used in the offloaded function by 
+ * basic blocks
+ *
+ * @param *O Type of the input to create safe variable
+ * @param *M Module
+ */
+GlobalVariable *getSafePointer(Type *O, Module *M){
+  // TODO: Check if there is a more efficient way to do this
+  GlobalVariable *G;
+  if(O->isPointerTy()){
+    GlobalVariable *ret = getSafePointer(cast<PointerType>(O)->getPointerElementType(),M);
+    G = new GlobalVariable(*M,O, true, GlobalValue::PrivateLinkage,ret);
+  }
+  else{
+    G = new GlobalVariable(*M,O,true,GlobalValue::PrivateLinkage,
+        Constant::getNullValue(O));
+  }
+  return G;
+}
+
+/**
+ * Transforms conditional branches to unconditional. This is done so operands
+ * of conditional branches are considered LiveOut Values.
+ * To do so we create an intermediate BB that will contain the original
+ * conditional branch.
+ *
+ * @param *BB Basic Block to tranform branch
+ */
+void separateBr(BasicBlock *BB){
+  Instruction *Br = BB->getTerminator();
+  if(cast<BranchInst>(Br)->isConditional()){
+    Instruction *Ipred = cast<Instruction>(Br->getOperand(0));
+    MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
+    Ipred->setMetadata("is.liveout",temp);
+    IRBuilder<> builder(BB->getContext());
+    BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
+      BB->getParent());
+    Br->moveBefore(*newBB,newBB->begin());
+    builder.SetInsertPoint(BB);
+    builder.CreateBr(newBB);
+
+  }
+}
+
+
+/**
+ * Assings positional arguments to LiveIn and LiveOut variables and stores those in 
  * metadata
  *
  * @param *BB Basic Block to analyze and assign positional data
  */
-void linkPositionalLiveIn(BasicBlock *BB){
+void linkPositionalLiveInOut(BasicBlock *BB){
 	SetVector<Value*> LiveIn, LiveOut;
 	SmallVector<Metadata*,32> Ops;
 
@@ -52,6 +121,19 @@ void linkPositionalLiveIn(BasicBlock *BB){
     }
 		pos++;
 	}
+
+  // Now we do the same but for liveOut values
+  pos = 0;
+  for(auto Vout: LiveOut){
+    if(N = ((Instruction*)Vout)->getMetadata("fuse.liveout.pos")){
+    }
+    else{
+  		MDNode* temp = MDNode::get(Context,ConstantAsMetadata::get(
+						ConstantInt::get(Context,llvm::APInt(64,pos,false))));
+				((Instruction*)Vout)->setMetadata("fuse.liveout.pos",temp);
+    }
+    pos++;
+  }
 }
 
 /**
@@ -77,7 +159,7 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
     storety = cast<StoreInst>(Ia).getPointerOperandType() ==
               cast<StoreInst>(Ib).getPointerOperandType();
 
-	return opcode and loadty and storety;
+	return opcode and loadty and storety and 0;
 }
 
 /**
@@ -112,7 +194,8 @@ bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B){
  * Uses metadata to tell where the merged operand is coming from
  * This is useful when LiveIn values are merged, they might come from 
  * different locations, hence when calling the merged function, the input
- * struct must be loaded with the appropiate values
+ * struct must be loaded with the appropiate value. This is also done in 
+ * reverse for liveOut operands.s
  *
  * @param opA Operand from Block A
  * @param opB Operand from Block B
@@ -128,14 +211,37 @@ void linkOps(Value *opA, Value *opB){
 		// operands again
 		for(int i=0;i<N->getNumOperands();++i)
 			Ops.push_back(N->getOperand(i));
+    // TODO: This should be unified with the else case (same for liveout)
 		Ops.push_back(ValueAsMetadata::get(opB));
-
 	}
 	else{
 		Ops.push_back(ValueAsMetadata::get(opB));
 	}
 	N = MDTuple::get(Context, Ops);
 	((Instruction*)opA)->setMetadata("fuse.livein", N);
+  return;
+}
+
+/*
+ *
+ */
+void linkLiveOut(Value *opA, Value *opB){
+	LLVMContext &Context = ((Instruction*)opA)->getContext();
+	SmallVector<Metadata*,32> Ops;
+	MDNode *N;
+  if (N= ((Instruction*)opA)->getMetadata("fuse.liveout")) {
+    MDNode *T = (MDNode*)(N->getOperand(0).get());
+    // TODO: Check if there is a more efficient way rather than copying all
+    // operands again
+		for(int i=0;i<N->getNumOperands();++i)
+			Ops.push_back(N->getOperand(i));
+		Ops.push_back(ValueAsMetadata::get(opB));
+  }
+  else{
+    Ops.push_back(ValueAsMetadata::get(opB));
+  }
+  N = MDTuple::get(Context,Ops);
+  ((Instruction*)opA)->setMetadata("fuse.liveout", N);
 	return;
 }
 
@@ -190,7 +296,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
       int OpC = -1;
       Value *SelI = NULL;
       mergedOpb = NULL;
-      if (!Ia.isTerminator()){
+      if (!Ia.isTerminator() and !isa<IntrinsicInst>(Ia)){
         for(Instruction &Ib : B){
           // Check if instructions can be merged
           if(areInstMergeable(Ia,Ib)){
@@ -227,24 +333,30 @@ void linkArgs(Value *selI, BasicBlock *BB){
         // and set not merged operand as a result of the select inst.
         Instruction *newInstA = Ia.clone();
         builder.Insert(newInstA);
+        // We link liveOuts from A to C, so we can get positional arguments
+        linkLiveOut((Value*)&Ia,(Value*)newInstA);
         if(SelI)
           newInstA->setOperand(OpC,SelI);
         SubOp[cast<Value>(&Ia)] = cast<Value>(newInstA);
-        if(mergedOpb)
+        if(mergedOpb){
           SubOp[cast<Value>(mergedOpb)] = newInstA;
+          linkLiveOut((Value*)mergedOpb,(Value*)newInstA); 
+          annotateMerge(newInstA);
+        } 
       }
     }
 
     // Left-over instructions from B are added now
     unsigned i = 0;
     for(Instruction &Ib : B){
-      if (pendingB[i] and !Ib.isTerminator() ){
+      if (pendingB[i] and !Ib.isTerminator() and !isa<IntrinsicInst>(Ib)){
         for(auto U = Ib.use_begin(); U != Ib.use_end() & pendingB[i]; ++U){
           // This deals with the insertion point
           // Insert those instructions before their uses
           if(((Value*)U->getUser())->isUsedInBasicBlock(C)){
             Instruction *newInstB = Ib.clone();
             newInstB->insertBefore((Instruction*)U->getUser());
+            linkLiveOut((Value*)&Ib,(Value*)newInstB); 
             SubOp[cast<Value>(&Ib)] = cast<Value>(newInstB);
             pendingB[i] = false;
           }
@@ -310,7 +422,8 @@ void linkArgs(Value *selI, BasicBlock *BB){
     // so that once we call the offload function, we know what fields must 
     // be filled and which ones should be filled with padding and safe inputs
     // This function adds metadata to the LiveIn values from different BBs
-    linkPositionalLiveIn(&BB);
+      // Same for Live Outs
+    linkPositionalLiveInOut(&BB);
 
 
     // Instantate all LiveIn values as Inputs types
@@ -339,11 +452,15 @@ void linkArgs(Value *selI, BasicBlock *BB){
     // Load Data (Creating New BB for readibility)
     BasicBlock* loadBB = BasicBlock::Create(Context,"loadBB",f,&BB);
     Builder.SetInsertPoint(loadBB);
+    // DEBUG PURPOSES
+    Function *dbgt = Intrinsic::getDeclaration(Mod,Intrinsic::debugtrap);
     vector<Value*> inData;
     for(int i=0;i<LiveIn.size();++i){
       Value *inGEPData = Builder.CreateStructGEP(f->getArg(0),i);
       inData.push_back(Builder.CreateLoad(inGEPData));
     }
+    // DEBUG PURPOSES
+    Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
     Builder.CreateBr(&BB);
 
     for(int i=0; i<LiveIn.size();++i){
@@ -358,10 +475,16 @@ void linkArgs(Value *selI, BasicBlock *BB){
       inData[i]->setName(LiveIn[i]->getName());
     }
 
+    for(auto &I: BB){
+      Builder.SetInsertPoint(&I);
+      if(I.getOperand(0)->getName()=="symbols.addr")
+        Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
+    }
 
     // Store Data (Creating New BB for readibility)
     BasicBlock* storeBB = BasicBlock::Create(Context,"storeBB",f);
     Builder.SetInsertPoint(storeBB);
+    Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
     Value *outData = Builder.CreateAlloca(outStruct);
     for(int i=0;i<LiveOut.size();++i){
       Value *outGEPData = Builder.CreateStructGEP(outData,i);
@@ -444,11 +567,8 @@ void linkArgs(Value *selI, BasicBlock *BB){
     // some of the LiveIn variables
     // TODO: Do not copy select variables
     // TODO: Create safe globals for pointers
-    for(auto &O : ((StructType*)inputType)->elements()){
-      F->getParent()->getOrInsertGlobal("",O);
-      SafeInputs.push_back(new GlobalVariable(*F->getParent(),O,true,
-            GlobalValue::PrivateLinkage, Constant::getNullValue(O)));
-    }
+    for(auto &O : ((StructType*)inputType)->elements())
+      SafeInputs.push_back(getSafePointer(O,F->getParent()));
 
     int i = 0; // Pointer to BB in bbList being processed
     // Record all instruction with metadata, so we can remove them later
@@ -555,13 +675,34 @@ void linkArgs(Value *selI, BasicBlock *BB){
         removeInst.push_back(&(*rI));
         rI++;
       }
+      // TODO: find a more efficient way of 
+      // Removing metadata attached to debug instructions
+      while(rI != BB->rend()){
+        if(rI->getMetadata("fuse.liveout"))
+          iMetadata.insert(&(*rI));
+          rI++;
+      }
 
       // If we have liveOut values we must now fill them with the function
       // computed ones and discard the instructions from this offloaded BB
       vector<AllocaInst*> oAllocas;
       Value *lastLoad;
       for(int arg = 0; arg < LiveOut.size(); ++arg){
-        Value *outGEPData = Builder.CreateStructGEP(outStruct,arg);
+        Value *Vout = LiveOut[arg];
+        Instruction *mergeIout;
+        MDNode *N;
+        int pos;
+	      if (N = ((Instruction*)Vout)->getMetadata("fuse.liveout")) {
+          mergeIout = cast<Instruction>(cast<ValueAsMetadata>
+                (N->getOperand(0).get())->getValue());
+          MDNode *T = mergeIout->getMetadata("fuse.liveout.pos");
+					pos = cast<ConstantInt>(cast<ConstantAsMetadata>
+					  	  	(T->getOperand(0))->getValue())->getSExtValue();
+          // TODO: Check if needed since we destroy those instructions once
+          // we insert the function
+          iMetadata.insert((Instruction*)Vout);
+        }
+        Value *outGEPData = Builder.CreateStructGEP(outStruct,pos);
         Value *out = Builder.CreateLoad(LiveOut[arg]->getType(),outGEPData);
         LiveOut[arg]->replaceAllUsesWith(out);
         lastLoad = out;
