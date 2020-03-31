@@ -36,13 +36,20 @@ GlobalVariable *getSafePointer(Type *O, Module *M){
   GlobalVariable *G;
   if(O->isPointerTy()){
     GlobalVariable *ret = getSafePointer(cast<PointerType>(O)->getPointerElementType(),M);
-    G = new GlobalVariable(*M,O, true, GlobalValue::PrivateLinkage,ret);
+    G = new GlobalVariable(*M,O,false, GlobalValue::PrivateLinkage,ret);
   }
   else{
-    G = new GlobalVariable(*M,O,true,GlobalValue::PrivateLinkage,
+    G = new GlobalVariable(*M,O,false,GlobalValue::PrivateLinkage,
         Constant::getNullValue(O));
   }
   return G;
+}
+
+//TODO: Check if we have to create a (new) GV or we can just get one with 
+//the same value troguht some getter funciont on the module or somethign
+Value *getSafePointer1(PointerType *O, Module *M){
+  Value *V =  new GlobalVariable(*M,O->getPointerElementType(),false,GlobalValue::ExternalLinkage,Constant::getNullValue(O->getPointerElementType()));
+  return V;
 }
 
 /**
@@ -159,7 +166,7 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
     storety = cast<StoreInst>(Ia).getPointerOperandType() ==
               cast<StoreInst>(Ib).getPointerOperandType();
 
-	return opcode and loadty and storety and 0;
+	return opcode and loadty and storety;
 }
 
 /**
@@ -223,25 +230,54 @@ void linkOps(Value *opA, Value *opB){
 }
 
 /*
+ * This functions goes through the linkedLiveOut values in other BBs
+ * and updates them to the new Instruction they should be pointing now
+ * This function assumes that data has already been copied
  *
+ * @param *Inew Instruction that will update the linked listsd
  */
-void linkLiveOut(Value *opA, Value *opB){
-	LLVMContext &Context = ((Instruction*)opA)->getContext();
-	SmallVector<Metadata*,32> Ops;
-	MDNode *N;
-  if (N= ((Instruction*)opA)->getMetadata("fuse.liveout")) {
-    MDNode *T = (MDNode*)(N->getOperand(0).get());
-    // TODO: Check if there is a more efficient way rather than copying all
-    // operands again
-		for(int i=0;i<N->getNumOperands();++i)
-			Ops.push_back(N->getOperand(i));
-		Ops.push_back(ValueAsMetadata::get(opB));
+void updateLiveOut(Instruction *Inew){
+  MDNode *N, *P;
+  if ( N  = (Inew->getMetadata("fuse.liveout"))){
+      LLVMContext &Context = Inew->getContext();
+  	  SmallVector<Metadata*,32> Ops;
+      Ops.push_back(ValueAsMetadata::get(cast<Value>(Inew)));
+      P = MDTuple::get(Context, Ops);
+  		for(int i=0;i<N->getNumOperands();++i){
+        Value *vBB = cast<ValueAsMetadata>(N->getOperand(i))->getValue();
+        cast<Instruction>(vBB)->setMetadata("fuse.liveout",P);
+      }
   }
-  else{
-    Ops.push_back(ValueAsMetadata::get(opB));
+  return;
+}
+
+/*
+ * This function links LiveOut values, so later when recovering the values from
+ * the offload function, we are able to known what is their position in
+ * the liveout struct and what value are we substituting for
+ *
+ * @param *opA Value from the BB we want to merge (unmodified)
+ * @param *opB Value from the new merged BB we want to bookeep (new BB)
+ */
+void linkLiveOut(Value *opA, Value *opB, SetVector<Value*> *LiveOut){
+  if(LiveOut->count(opA)){
+	  LLVMContext &Context = ((Instruction*)opA)->getContext();
+  	SmallVector<Metadata*,32> OpsA,OpsB;
+  	MDNode *N, *O, *P, *Q;
+    OpsA.push_back(ValueAsMetadata::get(opA));
+    OpsB.push_back(ValueAsMetadata::get(opB));
+    P = MDTuple::get(Context, OpsA);
+    Q = MDTuple::get(Context, OpsB);
+    // If the merged value has metadata pointing to him we must update that
+    // so it now points to the new value
+    if ( N  = ((Instruction*)opB)->getMetadata("fuse.liveout")) {
+		  for(int i=0;i<N->getNumOperands();++i)
+			  OpsA.push_back(N->getOperand(i));
+      P = MDTuple::get(Context, OpsA);
+    }
+    cast<Instruction>(opA)->setMetadata("fuse.liveout", Q);
+    cast<Instruction>(opB)->setMetadata("fuse.liveout", P);
   }
-  N = MDTuple::get(Context,Ops);
-  ((Instruction*)opA)->setMetadata("fuse.liveout", N);
 	return;
 }
 
@@ -272,8 +308,8 @@ void linkArgs(Value *selI, BasicBlock *BB){
   /**
    * Merges two basic blocks
    *
-   * @param *A BasicBlock to merge
-   * @param *B BasicBlock to merge
+   * @param *A BasicBlock to merge unmodifiedd
+   * @param *B BasicBlock to merge accumulated modifications or empty
    
    * @return Returns a newly created BasicBlock that contains a fused list
    * of instructions from A and B. The block does not have a terminator.
@@ -285,6 +321,15 @@ void linkArgs(Value *selI, BasicBlock *BB){
     builder.SetInsertPoint(C);
     vector<bool> pendingB(B.size(), true);
     Instruction *mergedOpb;
+    // TODO: Check if instead of creatingthis value in the middle of the fusion
+    // we can just instantiate it here (new Arg) and not add it in the end
+    Value *SelVal = NULL; // In case we need selection, a new selval is created
+    SetVector<Value*> LiveIn, LiveOut;
+    liveInOut(A, &LiveIn, &LiveOut);
+
+    // 
+    MDNode* emptyMD = MDNode::get(Context,ArrayRef<Metadata*>());
+
 
     // This map keeps track of the relation between old operand - new operand
     map<Value*,Value*> SubOp;
@@ -299,8 +344,11 @@ void linkArgs(Value *selI, BasicBlock *BB){
       if (!Ia.isTerminator() and !isa<IntrinsicInst>(Ia)){
         for(Instruction &Ib : B){
           // Check if instructions can be merged
-          if(areInstMergeable(Ia,Ib)){
+          if(areInstMergeable(Ia,Ib) and pendingB[i]){
             pendingB[i] = false;
+            // If instruction is merged, we must point uses of Ib to the new
+            // Ia instruction added in C
+            mergedOpb = &Ib;
             for(int j = 0; j < Ia.getNumOperands(); ++j){
               Value *opA = Ia.getOperand(j);
               Value *opB = Ib.getOperand(j);
@@ -309,16 +357,14 @@ void linkArgs(Value *selI, BasicBlock *BB){
                 //TODO:If mergeable and LiveIn, we must preserve opB
                 // origin
                 linkOps(opA,opB);
-                // If instruction is merged, we must point uses of Ib to the new
-                // Ia instruction added in C
-                mergedOpb = &Ib;
 
               }
               //  Operands cannot be merged, add select inst in case
               //  they are the same type
               else if( opA->getType() == opB->getType()){
-                Value *SelVal = new Argument(builder.getInt1Ty());
-                SelI = builder.CreateSelect(SelVal,opA,opB);
+                if(!SelVal) // Only create new argument if there wasnt one b4
+                  SelVal = new Argument(builder.getInt1Ty(),"fuse.sel.op.arg");
+                SelI = builder.CreateSelect(SelVal,opA,opB,"fuse.sel");
                 linkArgs(SelI,&A);
                 OpC = j;
               }
@@ -329,34 +375,100 @@ void linkArgs(Value *selI, BasicBlock *BB){
           }
           ++i;
         }
+        // TODO: This whole following section has to be reordered so it is more 
+        // comprehensive.
+        // Before Adding the instruction we must check if it accesses memory
+        // if it does, and it has not been merged, we must protect that
+        // We only do this, if we did not merge the load, otherwise it is 
+        // already a safe load
+        // TODO: Check if there is a more sensible way to do this 
+        // like a generit getPointerOperand for instructions
+        // Right now we need to cast them to their specific mem instructions
+        // TODO: Put this thing in a function please :)e
+        // TODO: Make this reasonable pls
+        Instruction *newInstA = Ia.clone();
+        // TODO: In case B is empty we don't need to add safe operands since t is not 
+        // a real BB, test whether this can be optimized
+        if(!Ia.getMetadata("fuse.issafe") and !mergedOpb){
+          Value *oPtr = NULL;
+          LoadInst *Li = NULL;
+          StoreInst *Si = NULL;
+          int index = -1;
+          if(Li = (dyn_cast<LoadInst>(&Ia))){
+            oPtr = Li->getPointerOperand();
+            index = LoadInst::getPointerOperandIndex();
+          }
+          else if(Si = (dyn_cast<StoreInst>(&Ia))){
+            oPtr = Si->getPointerOperand();
+            index = StoreInst::getPointerOperandIndex();
+          }
+          if(Li or Si){
+            if(!SelVal) // Only create new argument if there wasnt one b4
+              SelVal = new Argument(builder.getInt1Ty(),"fuse.sel.safe.arg");
+            Value *G = getSafePointer1(cast<PointerType>(oPtr->getType()),Ia.getModule());
+            Value *SelSafe = builder.CreateSelect(SelVal,oPtr,G,"fuse.sel.safe");
+            linkArgs(SelSafe,&A);
+            newInstA->setMetadata("fuse.issafe",emptyMD);
+            newInstA->setOperand(index,SelSafe);
+          } 
+        }
+
         // Adding instruction from A. If merged, check if select was created
         // and set not merged operand as a result of the select inst.
-        Instruction *newInstA = Ia.clone();
+        updateLiveOut(newInstA); // Migrate data from B if merged
         builder.Insert(newInstA);
         // We link liveOuts from A to C, so we can get positional arguments
-        linkLiveOut((Value*)&Ia,(Value*)newInstA);
+        linkLiveOut((Value*)&Ia,(Value*)newInstA, &LiveOut);
         if(SelI)
           newInstA->setOperand(OpC,SelI);
         SubOp[cast<Value>(&Ia)] = cast<Value>(newInstA);
         if(mergedOpb){
           SubOp[cast<Value>(mergedOpb)] = newInstA;
-          linkLiveOut((Value*)mergedOpb,(Value*)newInstA); 
+          newInstA->copyMetadata(*mergedOpb);
+          linkLiveOut((Value*)mergedOpb,(Value*)newInstA,&LiveOut); 
           annotateMerge(newInstA);
-        } 
+        }
       }
     }
 
     // Left-over instructions from B are added now
-    unsigned i = 0;
-    for(Instruction &Ib : B){
+    // Traverse  in reverse, so dependent instructions are added last
+    unsigned i = B.size()-1;
+    for(auto itB = B.rbegin(); itB != B.rend(); ++itB){
+      Instruction &Ib = *itB;
       if (pendingB[i] and !Ib.isTerminator() and !isa<IntrinsicInst>(Ib)){
+        Instruction *newInstB = Ib.clone();
+        // TODO: Put this last bit into a function pls :)
+        // If Load/Store we need to create safe select
+        if(!Ib.getMetadata("fuse.issafe")){
+          Value *oPtr = NULL;
+          LoadInst *Li = NULL;
+          StoreInst *Si = NULL;
+          int index = -1;
+          if(Li = (dyn_cast<LoadInst>(&Ib))){
+            oPtr = Li->getPointerOperand();
+            index = LoadInst::getPointerOperandIndex();
+          }
+          else if(Si = (dyn_cast<StoreInst>(&Ib))){
+            oPtr = Si->getPointerOperand();
+            index = StoreInst::getPointerOperandIndex();
+          }
+          if(Li or Si){
+            if(!SelVal) // Only create new argument if there wasnt one b4
+              SelVal = new Argument(builder.getInt1Ty(),"fuse.sel.safe.arg");
+            Value *G = getSafePointer1(cast<PointerType>(oPtr->getType()),A.getModule());
+            Value *SelSafe = builder.CreateSelect(SelVal,oPtr,G);
+            newInstB->setMetadata("fuse.issafe",emptyMD);
+            newInstB->setOperand(index,SelSafe);
+          }   
+        }
         for(auto U = Ib.use_begin(); U != Ib.use_end() & pendingB[i]; ++U){
           // This deals with the insertion point
           // Insert those instructions before their uses
-          if(((Value*)U->getUser())->isUsedInBasicBlock(C)){
-            Instruction *newInstB = Ib.clone();
+          if(((Instruction*)U->getUser())->getParent() == C){
+            updateLiveOut(newInstB); // Migrate data from B if merged
             newInstB->insertBefore((Instruction*)U->getUser());
-            linkLiveOut((Value*)&Ib,(Value*)newInstB); 
+            linkLiveOut((Value*)&Ib,(Value*)newInstB,&LiveOut); 
             SubOp[cast<Value>(&Ib)] = cast<Value>(newInstB);
             pendingB[i] = false;
           }
@@ -364,12 +476,13 @@ void linkArgs(Value *selI, BasicBlock *BB){
         // Is this possible? If no uses inside basic block append at end
         // Is this redundant w.r.t. the previous lines?
         if(pendingB[i] and !Ib.isTerminator()){
-          Instruction *newInstB = Ib.clone();
+          updateLiveOut(newInstB); // Migrate data from B if merged
           builder.Insert(newInstB);
           SubOp[cast<Value>(&Ib)] = cast<Value>(newInstB);
+          pendingB[i] = false;
         }
       }
-      ++i;
+      --i;
     }
 
     // Target operands change name when clonned
@@ -422,7 +535,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
     // so that once we call the offload function, we know what fields must 
     // be filled and which ones should be filled with padding and safe inputs
     // This function adds metadata to the LiveIn values from different BBs
-      // Same for Live Outs
+    // Same for Live Outs
     linkPositionalLiveInOut(&BB);
 
 
@@ -453,16 +566,17 @@ void linkArgs(Value *selI, BasicBlock *BB){
     BasicBlock* loadBB = BasicBlock::Create(Context,"loadBB",f,&BB);
     Builder.SetInsertPoint(loadBB);
     // DEBUG PURPOSES
-    Function *dbgt = Intrinsic::getDeclaration(Mod,Intrinsic::debugtrap);
+    //Function *dbgt = Intrinsic::getDeclaration(Mod,Intrinsic::debugtrap);
     vector<Value*> inData;
     for(int i=0;i<LiveIn.size();++i){
       Value *inGEPData = Builder.CreateStructGEP(f->getArg(0),i);
       inData.push_back(Builder.CreateLoad(inGEPData));
     }
     // DEBUG PURPOSES
-    Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
+    //Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
     Builder.CreateBr(&BB);
 
+    // TODO: Make this more efficient
     for(int i=0; i<LiveIn.size();++i){
       for(auto &I: BB){
         for(int j=0;j<I.getNumOperands();++j){
@@ -474,17 +588,17 @@ void linkArgs(Value *selI, BasicBlock *BB){
       // Preserve names for arguments 
       inData[i]->setName(LiveIn[i]->getName());
     }
-
+    /*
     for(auto &I: BB){
       Builder.SetInsertPoint(&I);
-      if(I.getOperand(0)->getName()=="symbols.addr")
+      if(isa<StoreInst>(I))
         Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
-    }
+    }*/
 
     // Store Data (Creating New BB for readibility)
     BasicBlock* storeBB = BasicBlock::Create(Context,"storeBB",f);
     Builder.SetInsertPoint(storeBB);
-    Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
+    //Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
     Value *outData = Builder.CreateAlloca(outStruct);
     for(int i=0;i<LiveOut.size();++i){
       Value *outGEPData = Builder.CreateStructGEP(outData,i);
@@ -504,10 +618,10 @@ void linkArgs(Value *selI, BasicBlock *BB){
     //Mod->dump();
 
     // Output Result
+    /* Disable this for now as it only generates problems and this can be
+     * safely done with llvm-extract
     Module *NewMod = new Module("offload_mod",Context);
     verifyModule(*NewMod,&errs());
-    /*Function *Newf = Function::Create(funcType,
-        Function::ExternalLinkage,"offload_func",NewMod);*/
     ValueToValueMapTy Vmap;
     Function *Newf = CloneFunction(f,Vmap);
     for (inst_iterator I = inst_begin(Newf), E = inst_end(Newf); I != E; ++I){
@@ -536,6 +650,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
     of.flush();
     of.close();
     delete NewMod;
+    */
 
     return f;
   }
@@ -567,6 +682,8 @@ void linkArgs(Value *selI, BasicBlock *BB){
     // some of the LiveIn variables
     // TODO: Do not copy select variables
     // TODO: Create safe globals for pointers
+    // TODO: This can now probably be removed, since we make safe potiner
+    // access in the offloaded funciton
     for(auto &O : ((StructType*)inputType)->elements())
       SafeInputs.push_back(getSafePointer(O,F->getParent()));
 
@@ -621,13 +738,13 @@ void linkArgs(Value *selI, BasicBlock *BB){
         
         // Send function selection
         // TODO: This has to be optimized. Now we search in the function for
-        // the select instructions to find it's position and to which BB they 
-        // beling
+        // the select instructions to find it's position and to which BB they
+        // belong to
         for(auto &BBtemp: *F)
           for(auto &Itemp: BBtemp){
             MDNode *N;
             BasicBlock *selBB = NULL;
-            int pos = 0;
+            int pos = -1;
             if (N = (Itemp.getMetadata("fuse.sel.pos"))){
               selBB = cast<Instruction>(cast<ValueAsMetadata>
                 (N->getOperand(0).get())->getValue())->getParent();
@@ -636,14 +753,13 @@ void linkArgs(Value *selI, BasicBlock *BB){
 					   pos = cast<ConstantInt>(cast<ConstantAsMetadata>
 					  	  	(N->getOperand(0))->getValue())->getSExtValue();
             }
-            if(pos and selBB){
+            if(pos>=0 and selBB){
   				    Value *inGEPData = Builder.CreateStructGEP(inStruct,pos);
   				    Builder.CreateStore(Builder.getInt1(selBB==BB),inGEPData);
            	  visited.insert(pos);
-              // In principle the following lines is not needed, since we are 
-              // droping the block all together, but just in case
-					    iMetadata.insert(&Itemp);
             }
+            if(Itemp.hasMetadata())
+					    iMetadata.insert(&Itemp);
           }
 /*
 			int iOffset = ((StructType*)inputType)->getNumElements()

@@ -35,6 +35,5 @@ Function* createOffload(BasicBlock&, Module*);
 bool insertCall(Function *F, vector<BasicBlock*> *bbList);
 void listBBInst(BasicBlock&);
 void linkOps(Value*,Value*);
-void linkLiveOut(Value *, Value*);
 void linkPositionalLiveInOut(BasicBlock *BB);
 void separateBr(BasicBlock *BB);
