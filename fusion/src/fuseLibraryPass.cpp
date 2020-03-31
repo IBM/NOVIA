@@ -56,38 +56,35 @@ namespace {
 	};
 
 
-	struct mergeBBList : public FunctionPass {
+	struct mergeBBList : public ModulePass {
 		static char ID;
 		set<string> bbs;
 		Function *Foff;
 
-		mergeBBList() : FunctionPass(ID) {}
+		mergeBBList() : ModulePass(ID) {}
 
-		bool doInitialization(Module &M) override {
-			// Initialize offload function
-
-			// Read the list of BBs to merge
-			fstream bbfile;
-			bbfile.open(bbFileName);
-			string bb_name;
-			while( bbfile >> bb_name )
-				bbs.insert(bb_name);
-		}
-
-		bool runOnFunction(Function &F) override {
+		bool runOnModule(Module &M) override {
 			vector<BasicBlock*> bbList;
 			BasicBlock *auxBBptr = NULL;
 			BasicBlock *C, *auxC;
 
-			// Search BB to merge
-			for(BasicBlock &BB: F){
-				if(bbs.count(BB.getName())){
-					bbList.push_back(&BB);
-				}
-			}
+			// Read the list of BBs to merge
+			fstream bbfile;
+			string bb_name;
+			bbfile.open(bbFileName);
+			while( bbfile >> bb_name )
+				bbs.insert(bb_name);
+		
+      // Search BB to merge
+      for(Function &F: M)
+			  for(BasicBlock &BB: F)
+		  		if(bbs.count(BB.getName())){
+            separateBr(&BB);
+		  			bbList.push_back(&BB);
+          }
 
 			if(bbList.size())
-				C = BasicBlock::Create(F.getContext(),"");
+				C = BasicBlock::Create(M.getContext(),"");
 
 			for(auto& BB: bbList){
 				errs() << "Merging " << BB->getName() << " and " << C->getName() << '\n';
@@ -117,7 +114,7 @@ namespace {
 				}*/
 			}
 			if(bbList.size()){
-				Foff = createOffload(*C,F.getParent());
+				Foff = createOffload(*C,&M);
 				insertCall(Foff,&bbList);
 				//delete C;
 			}
@@ -127,29 +124,38 @@ namespace {
 			// We remove merged block from the code
 			//for(auto& BB: bbList)
 			//	BB->removeFromParent();
-			F.dump();
+			//F.dump();
 			return false;
 			//errs() << F << '\n';
 		}
 	};
 
-	struct renameBBs : public FunctionPass {
+	struct renameBBs : public ModulePass {
 		static char ID;
 
 		map<string,unsigned> Names;
 
-		renameBBs() : FunctionPass(ID) {}
+		renameBBs() : ModulePass(ID) {}
 
-		bool runOnFunction(Function &F) override{
-			for(BasicBlock &BB: F){
-				if ( Names.count(BB.getName()) == 0)
-					Names[BB.getName()] = 1;
-				else {
-					int num = Names[BB.getName()];
-					Names[BB.getName()] += 1;
-					BB.setName(BB.getName()+to_string(num));
-				}
-			}
+		bool runOnModule(Module &M) override{
+      for(Function &F: M){
+		  	for(BasicBlock &BB: F){
+          string name = BB.getName();
+          string strip_name;
+          for(char a: name)
+            if(!isdigit(a))
+              strip_name.push_back(a);
+          int num = Names.count(strip_name);
+		  		if(!num)
+		  			Names[strip_name] = 1;
+		  		else {
+            num = Names[strip_name];
+		  			Names[strip_name] += 1;
+            strip_name += to_string(num);
+		  		}
+		  		BB.setName(strip_name);
+		  	}
+      }
 			return true;
 		}
 	};

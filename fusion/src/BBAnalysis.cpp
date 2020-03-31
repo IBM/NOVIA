@@ -38,6 +38,16 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
 	ValueSet Li, Lo;
 
 	CE.findInputsOutputs((ValueSet&)*LiveIn,(ValueSet&)*LiveOut,Allocas);
+  // We consider the branch conditions to be a liveOut variable since we cannot
+  // branc from an offload functions, and it's value might be computed inside
+  if(auto *I = dyn_cast_or_null<BranchInst>(BB.getTerminator()))
+    if(I->isConditional())
+      LiveOut->insert(cast<Value>(I->getOperand(0)));
+  // Annotate liveout values are added now
+  for(auto I=BB.begin(), E=BB.end(); I != E; ++I){
+    if(I->getMetadata("is.liveout"))
+      LiveOut->insert(cast<Value>(I));
+  }
 	for(Value *V: *LiveIn){
 		errs() << "Live In Value " << V->getName() << '\n';
 	}

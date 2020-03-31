@@ -5,8 +5,8 @@ LLVM IR fusion library
 cmake
 
 # Instructions
-* Execute ./compile_llvm
-* cd into fuseacc
+* ./compile_llvm
+* cd fusion
 * mkdir build
 * cd build
 * source ../../env.sh
