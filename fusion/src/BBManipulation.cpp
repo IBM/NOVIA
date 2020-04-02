@@ -1,6 +1,52 @@
 #include "BBManipulation.hpp"
 
 
+/**
+ *
+ *
+ * 
+ *
+ */
+Instruction *findOpDef(Instruction *I, map<Value*,Value*> *SubOp, BasicBlock *C){
+  set<Value*> OpSet;
+  Instruction *iPoint = NULL;
+
+  for(int i = 0 ; i < I->getNumOperands();++i){
+    if(SubOp->count(I->getOperand(i)))
+      OpSet.insert((*SubOp)[I->getOperand(i)]);
+  }
+  for(auto &Ic : *C){
+    if(OpSet.count(cast<Value>(&Ic))){
+      iPoint = &Ic;
+      return iPoint;
+    }
+  }    
+  
+  return iPoint;
+}
+/**
+ * This function finds the first Use of a non merged instruction in the merged
+ * BB
+ *
+ * @param *Ib Instruction to find use of in C
+ * @param *BBorig Original basic block
+ * @param *BB Basic Block to find use of
+ */
+Instruction *findFirstUse(Instruction *I, BasicBlock *BBorig,BasicBlock *BB){
+  Instruction *fU = NULL;
+  if ( I->getParent() == BBorig ){
+    for(auto U = I->user_begin(); U != I->user_end() and !fU; ++U){
+      if( cast<Instruction>(*U)->getParent() == BB ){
+        fU = cast<Instruction>(*U);
+      }
+      else{
+        fU = findFirstUse(cast<Instruction>(*U),BBorig,BB);
+      }   
+    }
+  }
+  return fU;
+}
+
 
 /**
  * Manages the number of times this instructions was merged
@@ -165,8 +211,20 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
   if (storety and isa<StoreInst>(Ia))
     storety = cast<StoreInst>(Ia).getPointerOperandType() ==
               cast<StoreInst>(Ib).getPointerOperandType();
+  // Some getelemptr have different amount of operands
+  // TODO: Check if those can be merged, for now we are leaving them asside
+  bool numops = Ia.getNumOperands() == Ib.getNumOperands();
+  // Check operand compatibility
+  bool samety = numops;
+  if(samety)
+    for(int i=0;i<Ia.getNumOperands();++i){
+      samety &= Ia.getOperand(i)->getType() == Ib.getOperand(i)->getType();
+    }
 
-	return opcode and loadty and storety;
+  // Do not merge select instructions, we will deal with this in later 
+  // optimization steps
+  bool noselect = !isa<SelectInst>(Ia);
+	return opcode and loadty and storety and numops and noselect and samety;
 }
 
 /**
@@ -178,23 +236,23 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
  * @return operands merge
  */
 bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B){
-	bool sameConstValue = false;
+	bool sameValue = false;
 	bool isLiveIn = false;
 	bool isInstMerg = false;
-	if(isa<ConstantInt>(opA) && isa<ConstantInt>(opB)){
-		sameConstValue = opA == opB;
-	}
-  else if(isa<ConstantFP>(opA) && isa<ConstantFP>(opB)){
-    sameConstValue = opA == opB;
-  }
-	else{
-		// If operands come from oustide the BB, they are fusable LiveIns
-		isLiveIn = ((Instruction*)opA)->getParent() != A &&
+  bool isConstant = false;
+  bool isSameType = false;
+
+	sameValue = opA == opB;
+  // Inst are same Value Constants
+  bool isSame = sameValue;
+  isConstant = isa<Constant>(opA) and isa<Constant>(opB);
+  isSameType = opA->getType() == opB->getType();
+	// If operands come from oustide the BB, they are fusable LiveIns
+	isLiveIn = ((Instruction*)opA)->getParent() != A &&
 			((Instruction*)opB)->getParent() != B;
 		// If operands come from mergeable Instructions
-		isInstMerg = areInstMergeable(*(Instruction*)opA,*(Instruction*)opB);
-	}
-	return sameConstValue || isLiveIn || isInstMerg;
+	isInstMerg = areInstMergeable(*(Instruction*)opA,*(Instruction*)opB);
+	return (sameValue and isConstant) or (isSameType and isLiveIn and !isConstant) or (isSameType and isInstMerg and !isConstant);
 }
 
 /**
@@ -433,8 +491,8 @@ void linkArgs(Value *selI, BasicBlock *BB){
 
     // Left-over instructions from B are added now
     // Traverse  in reverse, so dependent instructions are added last
-    unsigned i = B.size()-1;
-    for(auto itB = B.rbegin(); itB != B.rend(); ++itB){
+    unsigned i = 0;
+    for(auto itB = B.begin(); itB != B.end(); ++itB){
       Instruction &Ib = *itB;
       if (pendingB[i] and !Ib.isTerminator() and !isa<IntrinsicInst>(Ib)){
         Instruction *newInstB = Ib.clone();
@@ -462,32 +520,47 @@ void linkArgs(Value *selI, BasicBlock *BB){
             newInstB->setOperand(index,SelSafe);
           }   
         }
-        for(auto U = Ib.use_begin(); U != Ib.use_end() & pendingB[i]; ++U){
+
+        /*for(auto U = Ib.use_begin(); U != Ib.use_end() & pendingB[i]; ++U){
           // This deals with the insertion point
           // Insert those instructions before their uses
-          if(((Instruction*)U->getUser())->getParent() == C){
+          if(((Instruction*)U->getUser())->getParent() == &B){
             updateLiveOut(newInstB); // Migrate data from B if merged
             newInstB->insertBefore((Instruction*)U->getUser());
             linkLiveOut((Value*)&Ib,(Value*)newInstB,&LiveOut); 
             SubOp[cast<Value>(&Ib)] = cast<Value>(newInstB);
             pendingB[i] = false;
           }
-        }
+        }*/
         // Is this possible? If no uses inside basic block append at end
         // Is this redundant w.r.t. the previous lines?
-        if(pendingB[i] and !Ib.isTerminator()){
+          Instruction *iPointer = findOpDef(&Ib,&SubOp,C);
+          Instruction *firstUse = findFirstUse(&Ib,&B,C);
+          if(iPointer)
+            newInstB->insertAfter(iPointer);
+          else if(firstUse)
+          //if(firstUse)
+            newInstB->insertBefore(firstUse);
+          else
+            builder.Insert(newInstB);
           updateLiveOut(newInstB); // Migrate data from B if merged
-          builder.Insert(newInstB);
+          linkLiveOut((Value*)&Ib,(Value*)newInstB,&LiveOut); 
           SubOp[cast<Value>(&Ib)] = cast<Value>(newInstB);
           pendingB[i] = false;
-        }
+
+          for(auto &Ic : *C){
+            if( &Ic == newInstB )
+              errs() << Ic << " added\n";
+            else
+              Ic.dump();
+          }
       }
-      --i;
+      ++i;
     }
 
     // Target operands change name when clonned
     // Here we remap them to their new names to preserve producer-consumer 
-    for(Instruction &Ic: *C){
+    for(auto &Ic: *C){
       for(int j = 0; j < Ic.getNumOperands(); ++j){
         Value *Vc = Ic.getOperand(j);
         if(SubOp.count(Vc))
@@ -667,7 +740,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
     LLVMContext &Context = F->getContext();
     static IRBuilder<> Builder(Context);
     vector<Type*> inputTypes;
-    vector<GlobalVariable*> SafeInputs;
+    //vector<GlobalVariable*> SafeInputs;
     vector<Instruction*> removeInst;
 
     // offloaded functions receive as input a pointer to input struct and
@@ -684,8 +757,10 @@ void linkArgs(Value *selI, BasicBlock *BB){
     // TODO: Create safe globals for pointers
     // TODO: This can now probably be removed, since we make safe potiner
     // access in the offloaded funciton
-    for(auto &O : ((StructType*)inputType)->elements())
-      SafeInputs.push_back(getSafePointer(O,F->getParent()));
+    // TODO: Remove, no longer needed, we protect loads in offload funciton
+    //
+    //for(auto &O : ((StructType*)inputType)->elements())
+    //  SafeInputs.push_back(getSafePointer(O,F->getParent()));
 
     int i = 0; // Pointer to BB in bbList being processed
     // Record all instruction with metadata, so we can remove them later
@@ -700,7 +775,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
       Value *inStruct = Builder.CreateAlloca(inputType);
 
       // Send Input information
-      set<int> visited; // Mark those input positions that are filled
+      //set<int> visited; // Mark those input positions that are filled
       vector<AllocaInst*> Allocas;
       vector<pair<Value*, Value*> > RestoreInst;
       for(auto inV : LiveIn){
@@ -712,7 +787,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
         if (N = ((Instruction*)inV)->getMetadata("fuse.livein.pos")){
           pos = cast<ConstantInt>(cast<ConstantAsMetadata>
                (N->getOperand(0))->getValue())->getSExtValue();
-          visited.insert(pos);
+          //visited.insert(pos);
           iMetadata.insert((Instruction*)inV);
         }
         // We should only enter here if parameter is function select
@@ -756,7 +831,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
             if(pos>=0 and selBB){
   				    Value *inGEPData = Builder.CreateStructGEP(inStruct,pos);
   				    Builder.CreateStore(Builder.getInt1(selBB==BB),inGEPData);
-           	  visited.insert(pos);
+           	  //visited.insert(pos);
             }
             if(Itemp.hasMetadata())
 					    iMetadata.insert(&Itemp);
@@ -772,13 +847,13 @@ void linkArgs(Value *selI, BasicBlock *BB){
 			}
 */
 			// If not visited we must store safe parameters in the sturct
-			for(int arg = 0; arg < ((StructType*)inputType)->getNumElements();++arg){
-				if(!visited.count(arg)){
-					Value *inGEPData = Builder.CreateStructGEP(inStruct,arg);
-					Value *GlobDat = Builder.CreateLoad(SafeInputs[arg]);
-					Builder.CreateStore(GlobDat,inGEPData);
-				}
-			}
+			//for(int arg = 0; arg < ((StructType*)inputType)->getNumElements();++arg){
+			//	if(!visited.count(arg)){
+			//		Value *inGEPData = Builder.CreateStructGEP(inStruct,arg);
+			//		Value *GlobDat = Builder.CreateLoad(SafeInputs[arg]);
+			//		Builder.CreateStore(GlobDat,inGEPData);
+			//	}
+			//}
 
 			// Insert Call to offload function
 			Value *outStruct = Builder.CreateCall((Value*)F,ArrayRef<Value*>(inStruct));
