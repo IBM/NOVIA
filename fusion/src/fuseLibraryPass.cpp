@@ -94,24 +94,11 @@ namespace {
 				auxC = mergeBBs(*BB,*C);
 				delete C;
 				C = auxC;
-				//for(succ_iterator sit = succ_begin(BB); sit != succ_end(BB);
-				//	++sit)
-				//	sit->removePredecessor(BB);
-				//BB->replaceAllUsesWith(C);
-				errs() << "Listing New BB" << '\n';
+				
+        errs() << "Listing New BB" << '\n';
 				for (Instruction &I : *C){
 					errs() << I << '\n';
 				}
-
-				// Debug
-				/*
-				for(Instruction &I : *BB){
-					errs() << "Instruction: "<< I << '\n';
-					errs() << "Operands:\n";
-					for(int j = 0; j < I.getNumOperands(); ++j){
-						errs() << *(I.getOperand(j)->getType()) << '\n';
-					}
-				}*/
 			}
 			if(bbList.size()){
 				Foff = createOffload(*C,&M);
@@ -120,13 +107,13 @@ namespace {
 			}
 
 
-			errs()<<  "Correctly Exited\n";
-			// We remove merged block from the code
-			//for(auto& BB: bbList)
-			//	BB->removeFromParent();
-			//F.dump();
+      for(auto BB : bbList){
+        addMetadataMetrics(BB);
+        dumpMetadataMetrics(BB);
+      }
+      addMetadataMetrics(C);
+      dumpMetadataMetrics(C);
 			return false;
-			//errs() << F << '\n';
 		}
 	};
 

@@ -19,7 +19,12 @@
 using namespace llvm;
 using namespace std;
 
+
+int areaEstimate(Instruction&);
+int energyEstimate(Instruction&);
 void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
 void memoryFootprintBB(BasicBlock*);
 void memoryFootprintF(Function*);
 void buildDAG(BasicBlock&,DirectedGraph<SimpleDDGNode,DDGEdge>*);
+void addMetadataMetrics(BasicBlock*);
+void dumpMetadataMetrics(BasicBlock*);

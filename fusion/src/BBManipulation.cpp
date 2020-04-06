@@ -2,9 +2,12 @@
 
 
 /**
+ * This function recursively explores the dependencies of an instruction to find where is the 
+ * latest producer of it's operands. The instruction must be inserted after that.
  *
- *
- * 
+ * @param *I Instruction to search dependences 
+ * @param *SubOp Map of substituted values in the new basicblock
+ * @param *C merged BasicBlock to explore dependences to 
  *
  */
 Instruction *findOpDef(Instruction *I, map<Value*,Value*> *SubOp, BasicBlock *C){
@@ -15,15 +18,16 @@ Instruction *findOpDef(Instruction *I, map<Value*,Value*> *SubOp, BasicBlock *C)
     if(SubOp->count(I->getOperand(i)))
       OpSet.insert((*SubOp)[I->getOperand(i)]);
   }
+  //TODO:  Optimize to stop when NumOps founded
   for(auto &Ic : *C){
     if(OpSet.count(cast<Value>(&Ic))){
       iPoint = &Ic;
-      return iPoint;
     }
   }    
   
   return iPoint;
 }
+
 /**
  * This function finds the first Use of a non merged instruction in the merged
  * BB
@@ -414,7 +418,8 @@ void linkArgs(Value *selI, BasicBlock *BB){
               if(areOpsMergeable(opA,opB,&A,&B)){
                 //TODO:If mergeable and LiveIn, we must preserve opB
                 // origin
-                linkOps(opA,opB);
+                if(opA!=opB)
+                  linkOps(opA,opB);
 
               }
               //  Operands cannot be merged, add select inst in case
@@ -548,12 +553,13 @@ void linkArgs(Value *selI, BasicBlock *BB){
           SubOp[cast<Value>(&Ib)] = cast<Value>(newInstB);
           pendingB[i] = false;
 
+          /*
           for(auto &Ic : *C){
             if( &Ic == newInstB )
               errs() << Ic << " added\n";
             else
               Ic.dump();
-          }
+          }*/
       }
       ++i;
     }
@@ -908,9 +914,17 @@ void linkArgs(Value *selI, BasicBlock *BB){
 
   for(auto I: removeInst)
     I->eraseFromParent();
-	// TODO: Should we clean metadata like this?
-	for(auto I: iMetadata)
-		I->dropUnknownNonDebugMetadata();
+	// TODO: Should we clean metadata like this, ValueAsMetadata cannot be saved as bitcode?
+	for(auto I: iMetadata){
+    I->setMetadata("fuse.liveout",NULL);
+    I->setMetadata("fuse.liveout.pos",NULL);
+    I->setMetadata("fuse.livein",NULL);
+    I->setMetadata("fuse.livein.pos",NULL);
+    I->setMetadata("fuse.sel.pos", NULL);
+    //I->setMetadata("fuse.issafe",NULL);
+		//I->setMetadata("fuse.livein.pos",NULL);
+		//I->dropUnknownNonDebugMetadata();
+  }
 	// Remap restored Values in each BB
 	for(auto Elem : restoreMap){
 		Elem.second.first->replaceUsesWithIf(Elem.second.second,
