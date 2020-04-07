@@ -605,6 +605,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
           Ic.setOperand(j,SubOp[Vc]);
       }
     }
+    return C;
   }
 
   /**
