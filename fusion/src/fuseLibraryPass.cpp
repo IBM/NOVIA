@@ -72,7 +72,7 @@ namespace {
 			fstream bbfile;
 			string bb_name;
 			bbfile.open(bbFileName);
-			while( bbfile >> bb_name )
+			while(bbfile >> bb_name)
 				bbs.insert(bb_name);
 		
       // Search BB to merge
@@ -87,32 +87,29 @@ namespace {
 				C = BasicBlock::Create(M.getContext(),"");
 
 			for(auto& BB: bbList){
+        /*
 				errs() << "Merging " << BB->getName() << " and " << C->getName() << '\n';
 				errs() << " A:\n" << *BB << "B:\n" << '\n';
 				for (Instruction &I : *C)
-					errs() << I << '\n';
+					errs() << I << '\n';*/
 				auxC = mergeBBs(*BB,*C);
 				delete C;
 				C = auxC;
+
+        vector<int> a;
+        getMetadataMetrics(C,&a,&M);
 				
+        /*
         errs() << "Listing New BB" << '\n';
 				for (Instruction &I : *C){
 					errs() << I << '\n';
-				}
+				}*/
 			}
 			if(bbList.size()){
 				Foff = createOffload(*C,&M);
 				insertCall(Foff,&bbList);
 				//delete C;
 			}
-
-
-      for(auto BB : bbList){
-        addMetadataMetrics(BB);
-        dumpMetadataMetrics(BB);
-      }
-      addMetadataMetrics(C);
-      dumpMetadataMetrics(C);
 			return false;
 		}
 	};

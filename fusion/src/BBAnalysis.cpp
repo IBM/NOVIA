@@ -130,6 +130,42 @@ void buildDAG(BasicBlock &BB, DirectedGraph<SimpleDDGNode,DDGEdge> *G){
 	return;
 }
 
+/**
+ * Attaches the different metrics of a BB to it's terminator instruction
+ *
+ * @param *BB BasicBlock to analyze and attach metadata
+ */
+void getMetadataMetrics(BasicBlock *BB, vector<int> *data, Module *M){
+  MDNode *N;
+	DataLayout DL  = M->getDataLayout();
+  int footprint = 0;
+  int area = 0;
+  int energy = 0;
+  int max_merges = 0;
+  for(auto I = BB->begin(); I != BB->end() ; ++I){
+    if (isa<StoreInst>(I) or isa<LoadInst>(I)){
+      if(isa<StoreInst>(I))
+        footprint += DL.getTypeSizeInBits(I->getOperand(0)->getType());
+      else
+        footprint += DL.getTypeSizeInBits(I->getType());
+    }
+    if (N = (I->getMetadata("fuse.merged"))){
+      int tmp = cast<ConstantInt>(cast<ConstantAsMetadata>(N->getOperand(0))->getValue())
+        ->getSExtValue();
+      max_merges = tmp>max_merges?tmp:max_merges;
+
+    }
+    area += areaEstimate(*I); 
+    energy += energyEstimate(*I);
+  }
+  data->push_back(BB->size());
+  data->push_back(area);
+  data->push_back(energy);
+  data->push_back(footprint);
+  data->push_back(max_merges);
+  errs() << BB->getName() << " " << BB->size() << " " << area << " " << energy << " " << footprint << " " << max_merges << "\n";
+  return;
+}
 
 /**
  * Attaches the different metrics of a BB to it's terminator instruction
@@ -172,7 +208,7 @@ void addMetadataMetrics(BasicBlock *BB){
   return;
 }
 
-void dumpMetadataMetrics(BasicBlock *BB){
+void dumpAddedMetadataMetrics(BasicBlock *BB){
   MDNode *N;
   int footprint, area, energy, max_merges;
   footprint = area = energy = max_merges = -1;
@@ -193,11 +229,12 @@ void dumpMetadataMetrics(BasicBlock *BB){
       ->getSExtValue();
   }
 
+  errs() << BB->getName() << " " << BB->size() << " " << area << " " << energy << " " << footprint << " " << max_merges << "\n";
   return;
 }
 
 
-void getMetadataMetrics(BasicBlock *BB, vector<int> *data){
+void getAddedMetadataMetrics(BasicBlock *BB, vector<int> *data){
   MDNode *N;
   int footprint, area, energy, max_merges;
   footprint = area = energy = max_merges = -1;

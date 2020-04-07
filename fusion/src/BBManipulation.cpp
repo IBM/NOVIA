@@ -2,6 +2,38 @@
 
 
 /**
+ * Explores the instruction dependence tree and returns a sorted instruction list 
+ *
+ * @param *I Instruction to visit
+ * @param *BB BasicBlock to sort
+ * @return Sorted list of consumer execution
+ */
+
+list<Instruction*> *bfsBB(Instruction *I, BasicBlock *BB){
+  list<Instruction*> *result = new list<Instruction*>;
+
+  
+  for(auto op = I->op_begin(); op != I->op_end();  ++op){
+    //list<Instruction*> *
+  }
+
+  return result;
+
+}
+
+/**
+ * Check Consistency reorders instructions that were embedded in between their consujmer and 
+ * producer
+ *
+ * @param *C BasicBlock to reorder
+ */
+void sortBB(BasicBlock *BB){
+
+
+  return;
+}
+
+/**
  * This function recursively explores the dependencies of an instruction to find where is the 
  * latest producer of it's operands. The instruction must be inserted after that.
  *
@@ -573,11 +605,6 @@ void linkArgs(Value *selI, BasicBlock *BB){
           Ic.setOperand(j,SubOp[Vc]);
       }
     }
-
-
-    for(auto &I : *C)
-      errs() << I << '\n';
-    return C;
   }
 
   /**

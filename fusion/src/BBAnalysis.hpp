@@ -28,3 +28,5 @@ void memoryFootprintF(Function*);
 void buildDAG(BasicBlock&,DirectedGraph<SimpleDDGNode,DDGEdge>*);
 void addMetadataMetrics(BasicBlock*);
 void dumpMetadataMetrics(BasicBlock*);
+void getAddedMetadataMetrics(BasicBlock*,vector<int>*);
+void getMetadataMetrics(BasicBlock*,vector<int>*, Module*);
