@@ -1,4 +1,5 @@
 #include <string>
+#include <unordered_set>
 #include <map>
 
 #include "BBAnalysis.hpp"
@@ -32,8 +33,11 @@ bool areInstMergeable(Instruction&, Instruction&);
 bool areOpsMergeable(Value*, Value*);
 BasicBlock* mergeBBs(BasicBlock&, BasicBlock&);
 Function* createOffload(BasicBlock&, Module*);
-bool insertCall(Function *F, vector<BasicBlock*> *bbList);
+bool insertCall(Function *F, vector<BasicBlock*>*);
 void listBBInst(BasicBlock&);
 void linkOps(Value*,Value*);
-void linkPositionalLiveInOut(BasicBlock *BB);
+void linkArgs(Value*, BasicBlock*);
+void linkPositionalLiveInOut(BasicBlock*);
 void separateBr(BasicBlock *BB);
+Value *getSafePointer(PointerType*, Module*);
+

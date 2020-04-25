@@ -107,26 +107,6 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
     if(I->getMetadata("is.liveout"))
       LiveOut->insert(cast<Value>(I));
   }
-	for(Value *V: *LiveIn){
-		errs() << "Live In Value " << V->getName() << '\n';
-	}
-	for(Value *V: *LiveOut){
-		errs() << "Live Out Value " << V->getName() << '\n';
-	}
-	//for(Value *V: Allocas){
-	//	errs() << "Alloc " << V->getName() << '\n';
-	//}
-	//errs() << LiveIn << '\n';
-	return;
-}
-
-void buildDAG(BasicBlock &BB, DirectedGraph<SimpleDDGNode,DDGEdge> *G){
-	for(Instruction &I : BB){
-		SimpleDDGNode N = SimpleDDGNode(I);
-		G->addNode(N);
-	}
-	errs() << "PRINTING GRAPH\n";
-	errs() << G;
 	return;
 }
 
@@ -142,6 +122,7 @@ void getMetadataMetrics(BasicBlock *BB, vector<int> *data, Module *M){
   int area = 0;
   int energy = 0;
   int max_merges = 0;
+  int num_merges = 0;
   for(auto I = BB->begin(); I != BB->end() ; ++I){
     if (isa<StoreInst>(I) or isa<LoadInst>(I)){
       if(isa<StoreInst>(I))
@@ -153,17 +134,23 @@ void getMetadataMetrics(BasicBlock *BB, vector<int> *data, Module *M){
       int tmp = cast<ConstantInt>(cast<ConstantAsMetadata>(N->getOperand(0))->getValue())
         ->getSExtValue();
       max_merges = tmp>max_merges?tmp:max_merges;
-
+      num_merges++;
     }
     area += areaEstimate(*I); 
     energy += energyEstimate(*I);
   }
+  /*data->push_back(pair<string,int> ("instructions",BB->size()));
+  data->push_back(pair<string,int> ("area",area));
+  data->push_back(pair<string,int> ("energy",energy));
+  data->push_back(pair<string,int> ("memory footprint",footprint));
+  data->push_back(pair<string,int> ("maximum number of overlapping merges",max_merges));
+  data->push_back(pair<string,int> ("number of merged instructions",num_merges));*/
   data->push_back(BB->size());
   data->push_back(area);
   data->push_back(energy);
   data->push_back(footprint);
   data->push_back(max_merges);
-  errs() << BB->getName() << " " << BB->size() << " " << area << " " << energy << " " << footprint << " " << max_merges << "\n";
+  data->push_back(num_merges);
   return;
 }
 

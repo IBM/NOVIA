@@ -10,10 +10,10 @@ int main(int argn, char **argc){
 
 	int a = atoi(argc[1]) ;
 	if (a%2) {
-		a += 1;
+    a = (a/2)*5;
 	}
 	else {
-		a += 2;
+		a = ((a+2)%10)*5;
 	}
 	cout << "Result: " << a << endl;
 	return 0;
