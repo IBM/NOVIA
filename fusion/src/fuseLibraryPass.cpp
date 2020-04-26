@@ -111,10 +111,11 @@ namespace {
         fused.push_back(new vector<int>);
         getMetadataMetrics(C,fused[fused.size()-1],&M);
         
+        /*
         errs() << "Listing New BB" << '\n';
 				for (Instruction &I : *C){
 					errs() << I << '\n';
-				}
+				}*/
 			}
 			if(bbList.size()){
 				Foff = createOffload(*C,&M);

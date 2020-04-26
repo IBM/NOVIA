@@ -86,6 +86,48 @@ bool checkNoLoop(Instruction &Iref, Instruction &Isearch, BasicBlock *BB){
   return noloop;
 }
 
+
+vector<pair<Instruction*,int> > merge_vecs(vector< vector< pair<Instruction*,int> > > &recursions,
+    Instruction *I, int tier){
+  bool finished = false;
+  vector<pair<Instruction*, int> > sorted;
+  vector<int> index(recursions.size(),0);
+  while(!finished or I){
+    int i = 0;
+    int cur_i = -1;
+    int cur_tier = 1000; //TODO: implement better initialization
+    Instruction *cur_ins = NULL;
+    while(i < recursions.size()){
+      if(index[i] < recursions[i].size() and recursions[i][index[i]].second <= cur_tier){
+        cur_i = i;
+        cur_tier = recursions[i][index[i]].second;
+        cur_ins = recursions[i][index[i]].first;
+      }
+      ++i;
+    }
+    if(I and tier < cur_tier){
+       cur_tier = tier;
+       cur_ins = I;
+    }
+    if(cur_ins != I)
+      index[cur_i]++;
+    else
+      I = NULL;
+
+    sorted.push_back(pair<Instruction*,int>(cur_ins,cur_tier));
+
+    i = 0;
+    finished = true;
+    while(i < recursions.size()){
+      finished &= index[i] >= recursions[i].size();
+      ++i;
+    }
+  }
+  return sorted;
+
+}
+
+
 /**
  * Explores the instruction dependence tree and returns a sorted instruction list 
  *
@@ -94,13 +136,36 @@ bool checkNoLoop(Instruction &Iref, Instruction &Isearch, BasicBlock *BB){
  * @return Sorted list of consumer execution
  */
 
-void bfsBB(Instruction *I, BasicBlock *BB, set<Instruction*> *visited){
+vector<pair<Instruction*,int> > bfsBB(Instruction *I, BasicBlock *BB, int tier,
+    set<Instruction*> *visited){
     visited->insert(I);
+    vector<pair<Instruction*,int> > sorted;
+    vector<vector<pair<Instruction*, int> > > recursions;
+
+
+    for(int i =0; i < I->getNumOperands(); ++i){
+      Instruction *Op;
+      if((Op = dyn_cast<Instruction>(I->getOperand(i))) and !visited->count(Op))
+        if(Op->getParent() == BB){
+          recursions.push_back(bfsBB(Op,BB,tier-1,visited));
+      }
+    }
+    for(auto user = I->user_begin(); user != I->user_end();  ++user){
+      Instruction *Up = (Instruction*)*user;
+      if (Up->getParent() == BB){
+        recursions.push_back(bfsBB(Up,BB,tier+1,visited));
+      }
+    }
+    return merge_vecs(recursions, I, tier);
+
+/*
     for(auto user = I->user_begin(); user != I->user_end();  ++user){
       Instruction *Up = (Instruction*)*user;
       if (Up->getParent() == BB and !visited->count(Up))
         Up->moveAfter(I);
     }
+    
+    
 
     for(int i =0; i < I->getNumOperands(); ++i){
       Instruction *Op;
@@ -109,20 +174,9 @@ void bfsBB(Instruction *I, BasicBlock *BB, set<Instruction*> *visited){
           Op->moveBefore(I);
     }
 
-    for(auto user = I->user_begin(); user != I->user_end();  ++user){
-      Instruction *Up = (Instruction*)*user;
-      if (Up->getParent() == BB and !visited->count(Up))
-        bfsBB(Up,BB,visited);
-    }
 
-    for(int i =0; i < I->getNumOperands(); ++i){
-      Instruction *Op;
-      if((Op = dyn_cast<Instruction>(I->getOperand(i))) and !visited->count(Op))
-        if(Op->getParent() == BB)
-          bfsBB(Op,BB,visited);
-    }
 
-      return;
+      return;*/
 }
 
 /**
@@ -133,14 +187,19 @@ void bfsBB(Instruction *I, BasicBlock *BB, set<Instruction*> *visited){
  */
 void sortBB(BasicBlock *BB){
   set<Instruction*> visited;
+  vector<vector<pair<Instruction*,int> > > total_order;
 
   auto it = BB->begin();
   while( visited.size() != BB->size()){
-    if(!visited.count(&(*it))){
-      bfsBB(&(*it),BB,&visited);
-      visited.insert(&(*it));
-    }
+    if(!visited.count(&(*it)))
+      total_order.push_back(bfsBB(&(*it),BB,1,&visited));
     it++;
+  }
+
+  for(int i = 0; i < total_order.size(); ++i){
+      for(int j = 0; j < total_order[i].size()-1 ; ++j){
+        total_order[i][j+1].first->moveAfter(total_order[i][j].first);
+      }
   }
 
   return;
@@ -396,18 +455,17 @@ void linkOps(Value *opA, Value *opB){
 	LLVMContext &Context = ((Instruction*)opA)->getContext();
 	SmallVector<Metadata*,32> Ops;
 	MDNode *N;
-	if (N = ((Instruction*)opA)->getMetadata("fuse.livein")) {
-		MDNode *T =(MDNode*)(N->getOperand(0).get());
-		// TODO: Check if there is a more efficient way rather than copying all
-		// operands again
+	// TODO: Check if there is a more efficient way rather than copying all
+	// operands again
+	if (N = ((Instruction*)opB)->getMetadata("fuse.livein")) {
 		for(int i=0;i<N->getNumOperands();++i)
 			Ops.push_back(N->getOperand(i));
-    // TODO: This should be unified with the else case (same for liveout)
-		Ops.push_back(ValueAsMetadata::get(opB));
 	}
-	else{
-		Ops.push_back(ValueAsMetadata::get(opB));
+	if (N = ((Instruction*)opA)->getMetadata("fuse.livein")) {
+		for(int i=0;i<N->getNumOperands();++i)
+			Ops.push_back(N->getOperand(i));
 	}
+	Ops.push_back(ValueAsMetadata::get(opB));
 	N = MDTuple::get(Context, Ops);
 	((Instruction*)opA)->setMetadata("fuse.livein", N);
   return;
