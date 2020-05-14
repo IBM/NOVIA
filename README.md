@@ -3,10 +3,12 @@ LLVM IR fusion library
 
 # Requirements
 cmake
-qt4-qmake libqt4-dev (for Graphviz)
+libgd-dev qt4-qmake libqt4-dev (for Graphviz)
+
 
 # Instructions
 * ./compile_llvm
+* ./compile_graphviz
 * cd fusion
 * mkdir build
 * cd build
