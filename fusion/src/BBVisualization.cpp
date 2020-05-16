@@ -7,6 +7,7 @@
  */
 void drawBBGraph(BasicBlock *BB,char *file,string dir){
   struct stat buffer;
+
   if(dir.empty()){
     errs() << "No directory specified - assuming default\n";
     dir = "imgs";
@@ -17,11 +18,13 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir){
   }
 
   GVC_t *gvc = gvContext();
-  Agraph_t *G = agopen((char*)BB->getName().str().c_str(), Agstrictdirected, NULL);
+  Agraph_t *G = agopen((char*)BB->getName().take_front(10).str().c_str(),
+      Agstrictdirected, NULL);
 
   Agnode_t *n, *m;
   Agedge_t *e;
   Agsym_t *a;
+
   map<Instruction*,Agnode_t*> visited;
   map<string,int> names;
   string name;
@@ -36,33 +39,44 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir){
     else{
       names[name] = 0;
     }
+
     n = agnode(G,(char*)name.c_str(),1);
     visited.insert(pair<Instruction*,Agnode_t*>(&I,n));
     agsafeset(n,"shape","box","");
+    agsafeset(n,"fontsize","24","24");
+
+    // If the node is merged change color
     if(I.getMetadata("fuse.merged")){
       agsafeset(n,"style","filled","");
       agsafeset(n,"fillcolor","purple","");
+      agsafeset(n,"fontsize","24","24");
+      agsafeset(n,"fontcolor","white","black");
     }
   }
+
   // Add Edges
   for( auto &I : *BB ){
     for(int i = 0; i < I.getNumOperands();++i){
       Instruction *op = dyn_cast<Instruction>(I.getOperand(i));
-      if(visited.count(op)){
-        m = visited[op];
+      ConstantInt *cint = dyn_cast<ConstantInt>(I.getOperand(i));
+      if(cint){
+        m = agnode(G,(char*)to_string(cint->getSExtValue()).c_str(),1);
       }
       else{
-        name = string(I.getOperand(i)->getName());
-        if(names.count(name)){
-          names[name]++;
-          name = name+to_string(names[name]);
+        if(visited.count(op)){
+          m = visited[op];
         }
         else{
-          names[name] = 0;
+          name = string(I.getOperand(i)->getName());
+          if(names.count(name)){
+            names[name]++;
+            name = name+to_string(names[name]);
+          }
+          else{
+            names[name] = 0;
+          }
+          m = agnode(G,(char*)I.getOperand(i)->getName().str().c_str(),1);
         }
-        m = agnode(G,(char*)I.getOperand(i)->getName().str().c_str(),1);
-        agsafeset(n,"style","filled","");
-        agsafeset(m,"fillcolor","red","");
       }
       n = visited[&I];
       agedge(G,m,n,NULL,1);

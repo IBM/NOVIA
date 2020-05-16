@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <iomanip>
 
 #include "BBManipulation.hpp"
 #include "BBAnalysis.hpp"
@@ -21,9 +22,10 @@
 using namespace llvm;
 using namespace std;
 
-static cl::opt<string> bbFileName("bbs", cl::desc("Specify file with BB names to merge"));
-static cl::opt<string> visualDir("graph_dir", cl::desc("Directory for graphviz files"),
-                                 cl::Optional);
+static cl::opt<string> bbFileName("bbs",
+    cl::desc("Specify file with BB names to merge"));
+static cl::opt<string> visualDir("graph_dir",
+    cl::desc("Directory for graphviz files"),cl::Optional);
 
 namespace {
 
@@ -38,31 +40,11 @@ namespace {
 		}
 	};
 
-	struct memoryFootprint : public FunctionPass {
-		static char ID;
-
-		memoryFootprint() : FunctionPass(ID) {}
-
-		bool runOnFunction(Function &F) override {
-			memoryFootprintF(&F);
-			LLVMContext &Context = F.getContext();
-			SmallVector<pair<unsigned, MDNode*>, 4> MDs;
-			F.getAllMetadata(MDs);
-			for( auto&MD : MDs){
-				if(MDNode *N = MD.second){
-					Constant* val = dyn_cast<ConstantAsMetadata>(dyn_cast<MDNode>(N->getOperand(0))->getOperand(0))->getValue();
-					errs() << F.getName() << " - " << cast<ConstantInt>(val)->getSExtValue() << "bits \n";
-				}
-			}
-		}
-	};
-
-
 	struct mergeBBList : public ModulePass {
 		static char ID;
 		set<string> bbs;
 		Function *Foff;
-    vector<vector<int>* > prebb, fused, postbb, last;
+    vector<vector<float>* > prebb, fused, postbb, last;
 
 		mergeBBList() : ModulePass(ID) {}
 
@@ -70,6 +52,12 @@ namespace {
 			vector<BasicBlock*> bbList;
 			BasicBlock *auxBBptr = NULL;
 			BasicBlock *C, *auxC;
+      error_code EC;
+      raw_fd_ostream stats("stats.csv",EC);
+      stats << "BB,Inst,Original Inst (No Merges),Area,Power,Sequential Time,"
+        "Critical Path Overhead, Critical Path Computation,Memory Footprint,"
+        "Memory Access Time,Loads,Stores,Muxs,Max Merges,"
+        "Merged Instructions,Efficiency(Attainable Performance/Energy)\n";
 
 			// Read the list of BBs to merge
 			fstream bbfile;
@@ -82,13 +70,10 @@ namespace {
       for(Function &F: M)
 			  for(BasicBlock &BB: F)
 		  		if(bbs.count(BB.getName())){
-            prebb.push_back(new vector<int>);
+            prebb.push_back(new vector<float>);
             getMetadataMetrics(&BB,prebb[prebb.size()-1],&M);
             separateBr(&BB);
 		  			bbList.push_back(&BB);
-            if(!visualDir.empty())
-              drawBBGraph(&BB,(char*)(string("pre")+BB.getName().str()).c_str(),visualDir);
-
           }
 
 			if(bbList.size())
@@ -96,11 +81,6 @@ namespace {
         
 
 			for(auto& BB: bbList){
-        /*
-				errs() << "Merging " << BB->getName() << " and " << C->getName() << '\n';
-				errs() << " A:\n" << *BB << "B:\n" << '\n';
-				for (Instruction &I : *C)
-					errs() << I << '\n';*/
 				auxC = mergeBBs(*BB,*C);
 				delete C;
 				C = auxC;
@@ -108,66 +88,61 @@ namespace {
           drawBBGraph(C,(char*)C->getName().str().c_str(),visualDir);
 
 				
-        fused.push_back(new vector<int>);
+        fused.push_back(new vector<float>);
         getMetadataMetrics(C,fused[fused.size()-1],&M);
         
-        /*
+        stats << C->getName()  << ",";
+        for(int j = 0; j < fused[fused.size()-1]->size(); ++j){
+          stats << format("%.5e",(*fused[fused.size()-1])[j]) << ",";
+        }
+        stats << "\n";
+        
+        /* 
         errs() << "Listing New BB" << '\n';
 				for (Instruction &I : *C){
 					errs() << I << '\n';
-				}*/
+				}
+        */
 			}
 			if(bbList.size()){
 				Foff = createOffload(*C,&M);
 				insertCall(Foff,&bbList);
-				//delete C;
 			}
 
       //STATS
+      stats << "\n";
       for(auto &BB: *Foff){
-        last.push_back(new vector<int>);
+        last.push_back(new vector<float>);
         getMetadataMetrics(&BB,last[last.size()-1],&M);
+        stats << BB.getName() << ",";
+        for(int j = 0; j < last[last.size()-1]->size(); ++j){
+          stats << format("%.5e",(*last[last.size()-1])[j]) << ",";
+        }
+        stats << "\n";
       }
       for(auto BB: bbList){
-        postbb.push_back(new vector<int>);
+        postbb.push_back(new vector<float>);
         getMetadataMetrics(BB,postbb[postbb.size()-1],&M);
       }
+      stats << "\n";
       for(int i= 0; i < prebb.size(); ++i){
-        errs() << bbList[i]->getName() << " ";
+        stats << bbList[i]->getName() << ",";
         for(int j = 0; j < prebb[i]->size(); ++j){
-          errs() << (*prebb[i])[j] << " ";
+          stats << format("%.5e",(*prebb[i])[j]) << ",";
         }
-        errs() << "\n";
+        stats << "\n";
       }
-      errs() << "\n";
+      stats << "\n";
       for(int i= 0; i < postbb.size(); ++i){
-        errs() << bbList[i]->getName() << " ";
+        stats << bbList[i]->getName() << "_overhead,";
         for(int j = 0; j < postbb[i]->size(); ++j){
-          errs() << (*postbb[i])[j] << " ";
+          stats << format("%.5e",(*postbb[i])[j]) << ",";
         }
-        errs() << "\n";
+        stats << "\n";
       }
-      errs() << "\n";
-      
-      for(int i= 0; i < fused.size(); ++i){
-        errs() << " ";
-        for(int j = 0; j < fused[i]->size(); ++j){
-          errs() << (*fused[i])[j] << " ";
-        }
-        errs() << "\n";
-      }
-      errs() << "\n";
-      
-      for(int i= 0; i < last.size(); ++i){
-        errs() << " ";
-        for(int j = 0; j < last[i]->size(); ++j){
-          errs() << (*last[i])[j] << " ";
-        }
-        errs() << "\n";
-      }
-
-
-			return false;
+      stats << "\n";
+			
+      return false;
 		}
 	};
 
@@ -214,10 +189,6 @@ char listBBs::ID = 2;
 static RegisterPass<listBBs> c("listBBs", "List the names of all BBs", false,
 							   false);
 
-char memoryFootprint::ID = 0;
-static RegisterPass<memoryFootprint> d("memoryFootprint", "Compute the memory "
-		"footprint of basic blocks", false, false);
-
 static RegisterStandardPasses A(
 	PassManagerBuilder::EP_EarlyAsPossible,
 	[](const PassManagerBuilder &Builder,
@@ -232,8 +203,3 @@ static RegisterStandardPasses C(
 	PassManagerBuilder::EP_EarlyAsPossible,
 	[](const PassManagerBuilder &Builder,
 	   legacy::PassManagerBase &PM) {PM.add(new listBBs()); });
-
-static RegisterStandardPasses D(
-	PassManagerBuilder::EP_EarlyAsPossible,
-	[](const PassManagerBuilder &Builder,
-	   legacy::PassManagerBase &PM) {PM.add(new memoryFootprint()); });

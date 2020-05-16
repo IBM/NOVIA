@@ -20,13 +20,10 @@ using namespace llvm;
 using namespace std;
 
 
-int areaEstimate(Instruction&);
-int energyEstimate(Instruction&);
+// Analysis functions
 void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
-void memoryFootprintBB(BasicBlock*);
-void memoryFootprintF(Function*);
-void buildDAG(BasicBlock&,DirectedGraph<SimpleDDGNode,DDGEdge>*);
-void addMetadataMetrics(BasicBlock*);
-void dumpMetadataMetrics(BasicBlock*);
-void getAddedMetadataMetrics(BasicBlock*,vector<int>*);
-void getMetadataMetrics(BasicBlock*,vector<int>*, Module*);
+void memRAWDepAnalysis(BasicBlock*,map<Value*,Value*> *,LLVMContext &);
+
+
+// Stats functions
+void getMetadataMetrics(BasicBlock*,vector<float>*, Module*);

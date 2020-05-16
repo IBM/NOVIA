@@ -2,6 +2,16 @@
 
 
 // TODO: Optimize all getContext into just 1 and send it as parameter
+// This func is only to differentiate fuse.orig from fuseorig old
+// basicaly to identify if a B instruction is merged, whats its correspondant
+// instruction in A
+void linkInsOld(Instruction *newIns, Instruction *oldIns){
+	SmallVector<Metadata*,32> Ops;
+  Ops.push_back(ValueAsMetadata::get(cast<Value>(oldIns)));
+  MDNode *N = MDTuple::get(oldIns->getParent()->getContext(),Ops);
+  newIns->setMetadata("fuse.origold",N);
+  return;
+}
 
 void linkIns(Instruction *newIns, Instruction *oldIns){
 	SmallVector<Metadata*,32> Ops;
@@ -9,6 +19,23 @@ void linkIns(Instruction *newIns, Instruction *oldIns){
   MDNode *N = MDTuple::get(oldIns->getParent()->getContext(),Ops);
   newIns->setMetadata("fuse.orig",N);
   return;
+}
+
+
+int getStoreDomain(Instruction *I, BasicBlock *BB){
+  int domain = 0;
+  MDNode* N;
+  if((N = I->getMetadata("fuse.storedomain"))){
+    return cast<ConstantInt>(cast<ConstantAsMetadata>(
+          N->getOperand(0))->getValue())->getSExtValue();
+  }
+  for(auto user = I->user_begin(); user != I->user_end() and !domain; ++I){
+    Instruction *Up = (Instruction*)*user;
+    if(Up->getParent() == BB){
+      domain = getStoreDomain(Up,BB);
+    }
+  }
+  return domain;
 }
 
 
@@ -70,19 +97,26 @@ void secureMem(BasicBlock *BB, Value *SelVal, IRBuilder<> &builder, BasicBlock *
 bool checkNoLoop(Instruction &Iref, Instruction &Isearch, BasicBlock *BB){
   bool noloop = true;
   MDNode *N = NULL;
-  if((N = Isearch.getMetadata("fuse.orig")) and (Isearch.getParent() == BB)){
-    Instruction *Iorig = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
-    for(auto orig_user = Iorig->user_begin(); orig_user!= Iorig->user_end(); orig_user++){
-      if(&Iref == (Instruction*)*orig_user)
-        return false;
+  //if((N = Isearch.getMetadata("fuse.orig")) and (Isearch.getParent() == BB)){
+  if(&Iref == &Isearch)
+    return false;
+  else{
+      for(auto user = Isearch.user_begin(); user!= Isearch.user_end(); user++){
+        Instruction *Up = (Instruction*)*user;
+        if((N = Up->getMetadata("fuse.origold"))){
+          Instruction *Iorig = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
+          if(Iorig->getParent() == BB)
+            noloop &= checkNoLoop(Iref,*Iorig,BB);  
+        }
+        else if(Up->getParent() == Isearch.getParent())
+          noloop &= checkNoLoop(Iref,*Up,BB);
+      }
+      if((N = Isearch.getMetadata("fuse.rawdep"))){
+        Instruction *RAWdep = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
+        noloop &= checkNoLoop(Iref,*RAWdep,BB);
+      }
     }
-  }
-  for(auto user = Isearch.user_begin(); user != Isearch.user_end() and noloop; ++user){
-    Instruction *Up = (Instruction*)*user;
-    if( Up->getParent() == BB ){
-      noloop &= checkNoLoop(Iref,*Up,BB);  
-    }
-  }
+
   return noloop;
 }
 
@@ -95,7 +129,8 @@ vector<pair<Instruction*,int> > merge_vecs(vector< vector< pair<Instruction*,int
   while(!finished or I){
     int i = 0;
     int cur_i = -1;
-    int cur_tier = 1000; //TODO: implement better initialization
+  int cur_tier = 1000; //TODO: implement better initialization
+    assert(tier < cur_tier and "recursion exceeds initialization");
     Instruction *cur_ins = NULL;
     while(i < recursions.size()){
       if(index[i] < recursions[i].size() and recursions[i][index[i]].second <= cur_tier){
@@ -138,8 +173,8 @@ vector<pair<Instruction*,int> > merge_vecs(vector< vector< pair<Instruction*,int
 
 vector<pair<Instruction*,int> > bfsBB(Instruction *I, BasicBlock *BB, int tier,
     set<Instruction*> *visited){
+    MDNode *N;
     visited->insert(I);
-    vector<pair<Instruction*,int> > sorted;
     vector<vector<pair<Instruction*, int> > > recursions;
 
 
@@ -150,11 +185,20 @@ vector<pair<Instruction*,int> > bfsBB(Instruction *I, BasicBlock *BB, int tier,
           recursions.push_back(bfsBB(Op,BB,tier-1,visited));
       }
     }
+    if((N = I->getMetadata("fuse.wardep"))){
+        Instruction *WARdep = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
+        if(!visited->count(WARdep))
+          recursions.push_back(bfsBB(WARdep,BB,tier+1,visited));
+    }
     for(auto user = I->user_begin(); user != I->user_end();  ++user){
       Instruction *Up = (Instruction*)*user;
       if (Up->getParent() == BB){
         recursions.push_back(bfsBB(Up,BB,tier+1,visited));
       }
+    }
+    if((N = I->getMetadata("fuse.rawdep"))){
+        Instruction *RAWdep = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
+        recursions.push_back(bfsBB(RAWdep,BB,tier+1,visited));
     }
     return merge_vecs(recursions, I, tier);
 
@@ -291,16 +335,41 @@ Value *getSafePointer(PointerType *O, Module *M){
  *
  * @param *BB Basic Block to tranform branch
  */
+// TODO: Merge those ifs
 void separateBr(BasicBlock *BB){
-  Instruction *Br = BB->getTerminator();
-  if(cast<BranchInst>(Br)->isConditional()){
-    Instruction *Ipred = cast<Instruction>(Br->getOperand(0));
+  Instruction *I = BB->getTerminator();
+  if(isa<BranchInst>(I)){
+    if(cast<BranchInst>(I)->isConditional()){
+      Instruction *Ipred = cast<Instruction>(I->getOperand(0));
+      MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
+      Ipred->setMetadata("is.liveout",temp);
+      IRBuilder<> builder(BB->getContext());
+      BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
+        BB->getParent());
+      I->moveBefore(*newBB,newBB->begin());
+      builder.SetInsertPoint(BB);
+      builder.CreateBr(newBB);
+    }
+  }
+  else if(isa<SwitchInst>(I)){
+    Instruction *Ipred = cast<Instruction>(I->getOperand(0));
     MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
     Ipred->setMetadata("is.liveout",temp);
     IRBuilder<> builder(BB->getContext());
     BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
       BB->getParent());
-    Br->moveBefore(*newBB,newBB->begin());
+    I->moveBefore(*newBB,newBB->begin());
+    builder.SetInsertPoint(BB);
+    builder.CreateBr(newBB);
+  }
+  else if(dyn_cast<ReturnInst>(I) and cast<ReturnInst>(I)->getReturnValue()){
+    Instruction *Ipred = cast<Instruction>(cast<ReturnInst>(I)->getReturnValue());
+    MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
+    Ipred->setMetadata("is.liveout",temp);
+    IRBuilder<> builder(BB->getContext());
+    BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
+      BB->getParent());
+    I->moveBefore(*newBB,newBB->begin());
     builder.SetInsertPoint(BB);
     builder.CreateBr(newBB);
 
@@ -420,12 +489,14 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
  * @param &IRBuilder for inserting select instructions
  * @return operands merge
  */
-bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B){
+bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B,
+                    map<Value*,Value*> *SubOp){
 	bool sameValue = false;
 	bool isLiveIn = false;
 	bool isInstMerg = false;
   bool isConstant = false;
   bool isSameType = false;
+  bool sameOpAfterMerge = false;
 
 	sameValue = opA == opB;
   // Inst are same Value Constants
@@ -437,7 +508,10 @@ bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B){
 			((Instruction*)opB)->getParent() != B;
 		// If operands come from mergeable Instructions
 	isInstMerg = areInstMergeable(*(Instruction*)opA,*(Instruction*)opB);
-	return (sameValue and isConstant) or (isSameType and isLiveIn and !isConstant) or (isSameType and isInstMerg and !isConstant);
+  if(SubOp->count(opA) and SubOp->count(opB)){
+    sameOpAfterMerge = (*SubOp)[opA] == (*SubOp)[opB];
+  }
+	return (sameValue and isConstant) or (isSameType and isLiveIn and !isConstant) or (isSameType and isInstMerg and !isConstant and sameOpAfterMerge);
 }
 
 /**
@@ -547,6 +621,11 @@ void linkArgs(Value *selI, BasicBlock *BB){
     return;
   }
 
+
+  BasicBlock* splitBBs(BasicBlock *BB){
+
+    return BB;
+  }
   /**
    * Merges two basic blocks
    *
@@ -563,12 +642,15 @@ void linkArgs(Value *selI, BasicBlock *BB){
     builder.SetInsertPoint(C);
     vector<bool> pendingB(B.size(), true);
     Instruction *mergedOpb;
+    map<Value*,Value*> ARAWdeps, BRAWdeps;
     // TODO: Check if instead of creatingthis value in the middle of the fusion
     // we can just instantiate it here (new Arg) and not add it in the end
     //Value *SelVal = NULL; // In case we need selection, a new selval is created
     Value *SelVal = new Argument(builder.getInt1Ty(),"fuse.sel.arg");
     SetVector<Value*> LiveIn, LiveOut;
     liveInOut(A, &LiveIn, &LiveOut);
+    memRAWDepAnalysis(&A,&ARAWdeps,Context);
+    //memRAWDepAnalysis(&B,&BRAWdeps,Context);
 
     // 
 
@@ -580,13 +662,14 @@ void linkArgs(Value *selI, BasicBlock *BB){
     // merged in B. Otherwise we just add the new instruction from A.
     for(Instruction &Ia : A){
       int i = 0;
-      int OpC = -1;
-      Value *SelI = NULL;
+      vector<int> OpC;
+      vector<Value*> SelI;
       mergedOpb = NULL;
       if (!Ia.isTerminator() and !isa<IntrinsicInst>(Ia)){
         for(Instruction &Ib : B){
           // Check if instructions can be merged
-          if(areInstMergeable(Ia,Ib) and pendingB[i] and checkNoLoop(Ia,Ib,C)){
+          if(areInstMergeable(Ia,Ib) and pendingB[i] and checkNoLoop(Ia,Ib,&A)
+              and getStoreDomain(&Ia,&A) == getStoreDomain(&Ib,&B)){
             pendingB[i] = false;
             // If instruction is merged, we must point uses of Ib to the new
             // Ia instruction added in C
@@ -595,7 +678,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
               Value *opA = Ia.getOperand(j);
               Value *opB = Ib.getOperand(j);
               // Check if operands are mergeable
-              if(areOpsMergeable(opA,opB,&A,&B)){
+              if(areOpsMergeable(opA,opB,&A,&B,&SubOp)){
                 //TODO:If mergeable and LiveIn, we must preserve opB
                 // origin
                 if(opA!=opB)
@@ -605,9 +688,9 @@ void linkArgs(Value *selI, BasicBlock *BB){
               //  Operands cannot be merged, add select inst in case
               //  they are the same type
               else if( opA->getType() == opB->getType()){
-                SelI = builder.CreateSelect(SelVal,opA,opB,"fuse.sel");
-                linkArgs(SelI,&A);
-                OpC = j;
+                SelI.push_back(builder.CreateSelect(SelVal,opA,opB,"fuse.sel"));
+                linkArgs(SelI[SelI.size()-1],&A);
+                OpC.push_back(j);
               }
               else {
               }
@@ -664,13 +747,14 @@ void linkArgs(Value *selI, BasicBlock *BB){
         // TODO: Analyze if this can be merged with linkLiveOut, since it kind of has the same
         // job and we are doing it anyways for LiveOut values
         // We link liveOuts from A to C, so we can get positional arguments
-        linkLiveOut((Value*)&Ia,(Value*)newInstA, &LiveOut);
-        if(SelI)
-          newInstA->setOperand(OpC,SelI);
+        for(int j = 0; j < OpC.size() ; ++j)  
+          newInstA->setOperand(OpC[j],SelI[j]);
+
         SubOp[cast<Value>(&Ia)] = cast<Value>(newInstA);
         if(mergedOpb){
           SubOp[cast<Value>(mergedOpb)] = newInstA;
           newInstA->copyMetadata(*mergedOpb);
+          linkInsOld(mergedOpb,&Ia);
           linkLiveOut((Value*)mergedOpb,(Value*)newInstA,&LiveOut); 
           annotateMerge(newInstA);
           if(isa<LoadInst>(newInstA) or isa<StoreInst>(newInstA)){
@@ -679,6 +763,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
             newInstA->setMetadata("fuse.issafe",safe1MD);
           }
         }
+        linkLiveOut((Value*)&Ia,(Value*)newInstA, &LiveOut);
         linkIns(newInstA,&Ia);  
       }
     }
@@ -767,15 +852,37 @@ void linkArgs(Value *selI, BasicBlock *BB){
     // Target operands change name when clonned
     // Here we remap them to their new names to preserve producer-consumer 
     for(auto &Ic: *C){
+      MDNode *N;
+      if ((N = Ic.getMetadata("fuse.rawdep"))){
+        Value *V = cast<ValueAsMetadata>(N->getOperand(0))->getValue();
+        if(SubOp.count(V)){
+	        SmallVector<Metadata*,32> Ops;
+          Ops.push_back(ValueAsMetadata::get(SubOp[V]));
+          MDNode *N = MDTuple::get(Context,Ops);
+          Ic.setMetadata("fuse.rawdep",N);
+        }
+      }
+      if ((N = Ic.getMetadata("fuse.wardep"))){
+        Value *V = cast<ValueAsMetadata>(N->getOperand(0))->getValue();
+        if(SubOp.count(V)){
+	        SmallVector<Metadata*,32> Ops;
+          Ops.push_back(ValueAsMetadata::get(SubOp[V]));
+          MDNode *N = MDTuple::get(Context,Ops);
+          Ic.setMetadata("fuse.wardep",N);
+        }
+      }
       for(int j = 0; j < Ic.getNumOperands(); ++j){
         Value *Vc = Ic.getOperand(j);
         if(SubOp.count(Vc))
           Ic.setOperand(j,SubOp[Vc]);
       }
     }
-    sortBB(C); // Sort instructions by producer-consumer relationship
-    if(!B.empty()) // Only if we merge with something
+    if(!B.empty()){ // Only if we merge with something
+      sortBB(C); // Sort instructions by producer-consumer relationship
       secureMem(C,SelVal,builder,&A, A.getModule()); // If loads are not merged, make sure they are safe to execute
+    }
+    for(auto &Ic: *C)
+      Ic.setMetadata("fuse.origold",NULL);
 
     return C;
   }
@@ -867,6 +974,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
       // Preserve names for arguments 
       inData[i]->setName(LiveIn[i]->getName());
     }
+
     /*
     for(auto &I: BB){
       Builder.SetInsertPoint(&I);
@@ -875,19 +983,19 @@ void linkArgs(Value *selI, BasicBlock *BB){
     }*/
 
     // Store Data (Creating New BB for readibility)
-    BasicBlock* storeBB = BasicBlock::Create(Context,"storeBB",f);
-    Builder.SetInsertPoint(storeBB);
-    //Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
-    Value *outData = Builder.CreateAlloca(outStruct);
-    for(int i=0;i<LiveOut.size();++i){
-      Value *outGEPData = Builder.CreateStructGEP(outData,i);
-      Builder.CreateStore(LiveOut[i],outGEPData);
-    }
-    Builder.CreateRet(outData);
-
-    // Merged block jumps to store output data
-    Builder.SetInsertPoint(&BB);
-    Builder.CreateBr(storeBB);
+      BasicBlock* storeBB = BasicBlock::Create(Context,"storeBB",f);
+      Builder.SetInsertPoint(storeBB);
+      //Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
+      Value *outData = Builder.CreateAlloca(outStruct);
+      for(int i=0;i<LiveOut.size();++i){
+        Value *outGEPData = Builder.CreateStructGEP(outData,i);
+        Builder.CreateStore(LiveOut[i],outGEPData);
+      }
+      Builder.CreateRet(outData);
+  
+      // Merged block jumps to store output data
+      Builder.SetInsertPoint(&BB);
+      Builder.CreateBr(storeBB);
 
     // Check Consistency
     verifyFunction(*f,&errs());
@@ -998,11 +1106,14 @@ void linkArgs(Value *selI, BasicBlock *BB){
         }
         // We should only enter here if parameter is function select
         else{
-          assert(pos>-1 && "Missing positional information\n"); 
+          // TODO: Merging of alloca instructions might be tricky
+         errs() << "pos = "<< pos << "<=-1 && Missing positional information\n This might be an error or might be that the LiveIn variable got merged in\n"; 
         }
 
-        Value *inGEPData = Builder.CreateStructGEP(inStruct,pos);
-        Builder.CreateStore(inV,inGEPData);
+        if(pos >= 0){
+          Value *inGEPData = Builder.CreateStructGEP(inStruct,pos);
+          Builder.CreateStore(inV,inGEPData);
+        }
         // Keep safe restore values
         // We dropped speculation,. hence nothing to restore in memory
         // TODO: Add specualtion and restora values if wrong path is taken
@@ -1090,7 +1201,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
         MDNode *N;
         int pos;
 	      if (N = ((Instruction*)Vout)->getMetadata("fuse.liveout")) {
-          mergeIout = cast<Instruction>(cast<ValueAsMetadata>
+          mergeIout = cast<Instruction>(cast<ValueAsMetadata> // If this segfaults, likely we deleted the BB we were pointing at
                 (N->getOperand(0).get())->getValue());
           MDNode *T = mergeIout->getMetadata("fuse.liveout.pos");
 					pos = cast<ConstantInt>(cast<ConstantAsMetadata>
@@ -1105,7 +1216,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
         lastLoad = out;
       }
 
-      BB->setName(BB->getName()+"_merge");
+      BB->setName(BB->getName());
       // We are dropping for now the speculation capability. It makes things 
       // simpler.
       // TODO: Execute speculatvely, and restore the values that changed in
@@ -1123,6 +1234,8 @@ void linkArgs(Value *selI, BasicBlock *BB){
     I->setMetadata("fuse.livein.pos",NULL);
     I->setMetadata("fuse.sel.pos", NULL);
     I->setMetadata("fuse.orig", NULL);
+    I->setMetadata("fuse.rawdep",NULL);
+    I->setMetadata("fuse.wardep",NULL);
     //I->setMetadata("fuse.issafe",NULL);
 		//I->setMetadata("fuse.livein.pos",NULL);
 		//I->dropUnknownNonDebugMetadata();
