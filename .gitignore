@@ -38,3 +38,7 @@
 
 # Folders
 build/
+imgs/
+
+# Stats files
+.csv
