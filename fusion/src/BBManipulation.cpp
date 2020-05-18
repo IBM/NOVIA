@@ -22,6 +22,7 @@ void linkIns(Instruction *newIns, Instruction *oldIns){
 }
 
 
+// TODO: Sink on loads
 int getStoreDomain(Instruction *I, BasicBlock *BB){
   int domain = 0;
   MDNode* N;
@@ -29,7 +30,7 @@ int getStoreDomain(Instruction *I, BasicBlock *BB){
     return cast<ConstantInt>(cast<ConstantAsMetadata>(
           N->getOperand(0))->getValue())->getSExtValue();
   }
-  for(auto user = I->user_begin(); user != I->user_end() and !domain; ++I){
+  for(auto user = I->user_begin(); user != I->user_end() and !domain; ++user){
     Instruction *Up = (Instruction*)*user;
     if(Up->getParent() == BB){
       domain = getStoreDomain(Up,BB);
