@@ -1,0 +1,6 @@
+(cd simplebr && ./extract.sh)
+(cd simplebr3 && ./extract.sh)
+(cd simplebr_nofuse && ./extract.sh)
+(cd multidep && ./extract.sh)
+(cd deploop && ./extract.sh)
+(cd storeorder  && ./extract.sh)

@@ -1,0 +1,6 @@
+(cd simplebr && ./test.sh)
+(cd simplebr3 && ./test.sh)
+(cd simplebr_nofuse && ./test.sh)
+(cd multidep && ./test.sh)
+(cd deploop && ./test.sh)
+(cd storeorder  && ./test.sh)
