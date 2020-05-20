@@ -24,7 +24,7 @@ void linkIns(Instruction *newIns, Instruction *oldIns){
 
 // TODO: Sink on loads
 int getStoreDomain(Instruction *I, BasicBlock *BB){
-  int domain = 0;
+  int domain = 1; // Default value with no stores>?
   MDNode* N;
   if((N = I->getMetadata("fuse.storedomain"))){
     return cast<ConstantInt>(cast<ConstantAsMetadata>(
@@ -130,7 +130,7 @@ vector<pair<Instruction*,int> > merge_vecs(vector< vector< pair<Instruction*,int
   while(!finished or I){
     int i = 0;
     int cur_i = -1;
-  int cur_tier = 1000; //TODO: implement better initialization
+  int cur_tier = 10000; //TODO: implement better initialization
     assert(tier < cur_tier and "recursion exceeds initialization");
     Instruction *cur_ins = NULL;
     while(i < recursions.size()){
@@ -454,6 +454,9 @@ void linkPositionalLiveInOut(BasicBlock *BB){
 bool areInstMergeable(Instruction &Ia, Instruction &Ib){
 	// Same opcode
 	bool opcode = Ia.getOpcode() == Ib.getOpcode();
+  if(opcode and isa<CmpInst>(Ia)){
+    opcode &= cast<CmpInst>(Ia).getPredicate() == cast<CmpInst>(Ib).getPredicate();
+  }
 
   // If operands are loads, they must be loading the same type of data
   // TODO: Check if this can be generalized to ints vs floats
@@ -470,8 +473,8 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
   // TODO: Check if those can be merged, for now we are leaving them asside
   bool numops = Ia.getNumOperands() == Ib.getNumOperands();
   // Check operand compatibility
-  bool samety = numops;
-  if(samety)
+  bool samety = Ia.getType() == Ib.getType();
+  if(opcode and samety and numops)
     for(int i=0;i<Ia.getNumOperands();++i){
       samety &= Ia.getOperand(i)->getType() == Ib.getOperand(i)->getType();
     }
@@ -502,7 +505,7 @@ bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B,
 	sameValue = opA == opB;
   // Inst are same Value Constants
   bool isSame = sameValue;
-  isConstant = isa<Constant>(opA) and isa<Constant>(opB);
+  isConstant = isa<Constant>(opA) or isa<Constant>(opB);
   isSameType = opA->getType() == opB->getType();
 	// If operands come from oustide the BB, they are fusable LiveIns
 	isLiveIn = ((Instruction*)opA)->getParent() != A &&
@@ -742,7 +745,6 @@ void linkArgs(Value *selI, BasicBlock *BB){
 
         // Adding instruction from A. If merged, check if select was created
         // and set not merged operand as a result of the select inst.
-        updateLiveOut(newInstA); // Migrate data from B if merged
         builder.Insert(newInstA);
         // We link the instructions to the original BB instruction
         // TODO: Analyze if this can be merged with linkLiveOut, since it kind of has the same
@@ -755,6 +757,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
         if(mergedOpb){
           SubOp[cast<Value>(mergedOpb)] = newInstA;
           newInstA->copyMetadata(*mergedOpb);
+          updateLiveOut(newInstA); // Migrate data from B if merged
           linkInsOld(mergedOpb,&Ia);
           linkLiveOut((Value*)mergedOpb,(Value*)newInstA,&LiveOut); 
           annotateMerge(newInstA);
