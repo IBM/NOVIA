@@ -34,8 +34,8 @@ map<unsigned,float> delay = {
   {Instruction::Trunc,0.01},
   {Instruction::FPTrunc,0.01},
   {Instruction::BitCast,0.01},
-  {Instruction::Load,10},
-  {Instruction::Store,3},
+  {Instruction::Load,1},
+  {Instruction::Store,1},
   {Instruction::GetElementPtr,1.92},
   {Instruction::Alloca,0.01},
   {Instruction::PHI,0.23},
@@ -96,49 +96,49 @@ map<unsigned,int> area = {
 };
 
 // In nJ
-map<unsigned,int> energy = { 
-  {Instruction::Br,1},
-  {Instruction::Add,3},
-  {Instruction::Sub,3},
-  {Instruction::Mul,9},
-  {Instruction::UDiv,12},
-  {Instruction::SDiv,12},
-  {Instruction::URem,14},
-  {Instruction::SRem,14},
-  {Instruction::Shl,3},
-  {Instruction::LShr,3},
-  {Instruction::AShr,3},
-  {Instruction::And,2},
-  {Instruction::Or,2},
-  {Instruction::Xor,2},
-  {Instruction::Select,1},
-  {Instruction::ICmp,2},
-  {Instruction::FCmp,2},
-  {Instruction::ZExt,1},
-  {Instruction::SExt,1},
-  {Instruction::FPToUI,1},
-  {Instruction::FPToSI,1},
-  {Instruction::FPExt,1},
-  {Instruction::PtrToInt,1},
-  {Instruction::IntToPtr,1},
-  {Instruction::SIToFP,1},
-  {Instruction::UIToFP,1},
-  {Instruction::Trunc,1},
-  {Instruction::FPTrunc,1},
-  {Instruction::BitCast,1},
-  {Instruction::Load,500},
-  {Instruction::Store,100},
-  {Instruction::GetElementPtr,12},
-  {Instruction::Alloca,1},
-  {Instruction::PHI,1},
-  {Instruction::Call,1},
-  {Instruction::Switch,2},
-  {Instruction::Ret,1},
-  {Instruction::FAdd,6},
-  {Instruction::FSub,6},
-  {Instruction::FMul,18},
-  {Instruction::FDiv,20},
-  {Instruction::FRem,23},
+map<unsigned,float> energy = { 
+  {Instruction::Br,0.5},
+  {Instruction::Add,40.6},
+  {Instruction::Sub,40.6},
+  {Instruction::Mul,49.2},
+  {Instruction::UDiv,482.3},
+  {Instruction::SDiv,489.3},
+  {Instruction::URem,601.9},
+  {Instruction::SRem,601.9},
+  {Instruction::Shl,42.5},
+  {Instruction::LShr,46.9},
+  {Instruction::AShr,61.5},
+  {Instruction::And,38.7},
+  {Instruction::Or,39.1},
+  {Instruction::Xor,39.9},
+  {Instruction::Select,48.5},
+  {Instruction::ICmp,58.8},
+  {Instruction::FCmp,58.4},
+  {Instruction::ZExt,20},
+  {Instruction::SExt,20},
+  {Instruction::FPToUI,44.0},
+  {Instruction::FPToSI,44.0 },
+  {Instruction::FPExt,44.0},
+  {Instruction::PtrToInt,0.5},
+  {Instruction::IntToPtr,0.5},
+  {Instruction::SIToFP,44.0},
+  {Instruction::UIToFP,44.0},
+  {Instruction::Trunc,20},
+  {Instruction::FPTrunc,20},
+  {Instruction::BitCast,0.5},
+  {Instruction::Load,75.1},
+  {Instruction::Store,93.1},
+  {Instruction::GetElementPtr,40.6},
+  {Instruction::Alloca,40.6},
+  {Instruction::PHI,0.5},
+  {Instruction::Call,0.5},
+  {Instruction::Switch,0.5},
+  {Instruction::Ret,0.5},
+  {Instruction::FAdd,50.4},
+  {Instruction::FSub,50.4},
+  {Instruction::FMul,50.4},
+  {Instruction::FDiv,968.4},
+  {Instruction::FRem,1069.2},
 };
 
 // Static power in nwatts
@@ -197,10 +197,12 @@ float getDelay(Instruction *I){
   return ret;
 }
 
-int getEnergyDyn(Instruction *I){
-  int ret = 0; // default value
-  if(energy.count(I->getOpcode()))
-    ret = energy[I->getOpcode()]/1000000000;
+float getEnergyDyn(Instruction *I){
+  float ret = 0; // default value
+  if(energy.count(I->getOpcode())){
+    ret = energy[I->getOpcode()]-28;
+    if(ret<0) ret = 0.5;
+  }
   else
     errs() << "Missing Energy Value (" << I->getOpcodeName() << ")\n";
   return ret;
@@ -209,7 +211,7 @@ int getEnergyDyn(Instruction *I){
 float getPowerSta(Instruction *I){
   float ret = 0; // default value
   if(powersta.count(I->getOpcode()))
-    ret = powersta[I->getOpcode()]/1000000000;
+    ret = powersta[I->getOpcode()];
   else
     errs() << "Missing Energy Value (" << I->getOpcodeName() << ")\n";
   return ret;

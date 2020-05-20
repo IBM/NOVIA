@@ -155,13 +155,15 @@ void getMetadataMetrics(BasicBlock *BB, vector<float> *data, Module *M){
   float orig_inst = 0;
   float footprint = 0;
   float area = 0;
-  float power = 0;
+  float powersta = 0;
+  float powerdyn = 0;
   float max_merges = 0;
   float num_merges = 0;
   float num_sel = 0;
   float mem_time = 0;
   float time = 0;
   float num_ld = 0, num_st = 0;
+  float power = 0;
   pair<float,float> crit_path = getCriticalPathCost(BB);
   for(auto I = BB->begin(); I != BB->end() ; ++I){
     time += getDelay(&*I);
@@ -187,27 +189,34 @@ void getMetadataMetrics(BasicBlock *BB, vector<float> *data, Module *M){
     }
     orig_inst += 1;
     area += getArea(&*I); 
-    power += getPowerSta(&*I)+getEnergyDyn(&*I)/float(getDelay(&*I));
+    powersta += getPowerSta(&*I);
+    powersta = 0;
+    powerdyn += getEnergyDyn(&*I);
   }
+  power = powersta+powerdyn;
   mem_time = 10*num_ld+3*num_st;
-  data->push_back(BB->size()); // Num Inst
   data->push_back(orig_inst-num_sel);  // Orig Inst
-  data->push_back(area);       // Area Estimate
-  data->push_back(power);     // Energy Estimate
-  data->push_back(time);       // Sequential Time Estimate
-  data->push_back(crit_path.first);  // Critical Path estimate in Time units
-  data->push_back(crit_path.second);  // Critical Path estimate in Time units
-  data->push_back(footprint);  // Memory Footprint in bits
-  data->push_back(mem_time);   // Memory Access time
+  data->push_back(max_merges); // Maximum number of merges
+  data->push_back(num_merges); // Number of merges
+  data->push_back(BB->size()); // Num Inst
   data->push_back(num_ld);     // Num Loads
   data->push_back(num_st);     // Num Stores
   data->push_back(num_sel);    // Select Overhead
-  data->push_back(max_merges); // Maximum number of merges
-  data->push_back(num_merges); // Number of merges
+  data->push_back(BB->size()-num_ld-num_st-num_sel); // Other Instructions
+  data->push_back(time);       // Sequential Time Estimate
+  data->push_back(footprint);  // Memory Footprint in bits
+  data->push_back(crit_path.first);  // Critical Path estimate in Time units
+  data->push_back(crit_path.second);  // Critical Path estimate in Time units
+  data->push_back(area);       // Area Estimate
+  data->push_back(powersta);     // Energy Estimate
+  data->push_back(powerdyn);     // Energy Estimate
   float bw = (footprint/float(8))/mem_time; // Bandwidth 
   float ci = (BB->size()-num_sel)/(footprint/float(8));  // Compute 
-  float cp = (orig_inst-num_sel)/(crit_path.first+crit_path.second); 
+  float useful = orig_inst-num_sel;
+  float cp = useful/(crit_path.first+crit_path.second); 
   data->push_back(cp/(area*power)/1e9); // Efficiency Gi/smm2W
+  float eff_comp = useful/(crit_path.second*area*power)/1e9;
+  //data->push_back(eff_comp);
   // TODO: Search Literature for sound models
   // Perforamnce and Resource Modeling for FPGAs using High-Level
   // Synthesis tools: https://core.ac.uk/download/pdf/55728609.pdf
