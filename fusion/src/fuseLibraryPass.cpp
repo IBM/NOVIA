@@ -42,7 +42,7 @@ namespace {
 
 	struct mergeBBList : public ModulePass {
 		static char ID;
-		set<string> bbs;
+		vector<pair<string,BasicBlock*> > bbs;
 		Function *Foff;
     vector<vector<float>* > prebb, fused, postbb, last;
 
@@ -54,27 +54,32 @@ namespace {
 			BasicBlock *C, *auxC;
       error_code EC;
       raw_fd_ostream stats("stats.csv",EC);
-      stats << "BB,Inst,Original Inst (No Merges),Area,Power,Sequential Time,"
-        "Critical Path Overhead, Critical Path Computation,Memory Footprint,"
-        "Memory Access Time,Loads,Stores,Muxs,Max Merges,"
-        "Merged Instructions,Efficiency(Attainable Performance/Energy)\n";
+      stats << "BB,Original Inst (Sum(BBsize)),Maximum Stacked Merges,Number" 
+        " of Merged Instructions,Num Inst,Num Loads,Num Stores,Num Muxs (S"
+        "elects),Other Instructions,Sequential Time,Memory Footprint (bits)"
+        ",Critical Path Communication,Critical Path Computation,Area,"
+        "Static Power,Dynamic Power,Efficiency\n";
 
 			// Read the list of BBs to merge
 			fstream bbfile;
 			string bb_name;
 			bbfile.open(bbFileName);
 			while(bbfile >> bb_name)
-				bbs.insert(bb_name);
+				bbs.push_back(pair<string,BasicBlock*> (bb_name,NULL));
 		
       // Search BB to merge
       for(Function &F: M)
 			  for(BasicBlock &BB: F)
-		  		if(bbs.count(BB.getName())){
-            prebb.push_back(new vector<float>);
-            getMetadataMetrics(&BB,prebb[prebb.size()-1],&M);
-            separateBr(&BB);
-		  			bbList.push_back(&BB);
-          }
+          for(int i = 0; i < bbs.size(); ++i)
+            if( BB.getName() == bbs[i].first)
+              bbs[i].second = &BB;
+
+      for(int i = 0; i < bbs.size(); ++i){
+        prebb.push_back(new vector<float>);
+        getMetadataMetrics(bbs[i].second,prebb[prebb.size()-1],&M);
+        separateBr(bbs[i].second);
+		  	bbList.push_back(bbs[i].second);
+      }
 
 			if(bbList.size())
 				C = BasicBlock::Create(M.getContext(),"");
@@ -101,8 +106,8 @@ namespace {
         errs() << "Listing New BB" << '\n';
 				for (Instruction &I : *C){
 					errs() << I << '\n';
-				}
-        */
+				}*/
+        
 			}
 			if(bbList.size()){
 				Foff = createOffload(*C,&M);
