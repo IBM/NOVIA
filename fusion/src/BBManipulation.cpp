@@ -131,6 +131,7 @@ vector<pair<Instruction*,int> > merge_vecs(vector< vector< pair<Instruction*,int
     int i = 0;
     int cur_i = -1;
   int cur_tier = 10000; //TODO: implement better initialization
+
     assert(tier < cur_tier and "recursion exceeds initialization");
     Instruction *cur_ins = NULL;
     while(i < recursions.size()){
@@ -175,42 +176,37 @@ vector<pair<Instruction*,int> > merge_vecs(vector< vector< pair<Instruction*,int
 vector<pair<Instruction*,int> > bfsBB(Instruction *I, BasicBlock *BB, int tier,
     set<Instruction*> *visited){
     MDNode *N;
-    visited->insert(I);
     vector<vector<pair<Instruction*, int> > > recursions;
 
+    if(I->getParent() == BB and !visited->count(I)){
 
-    for(int i =0; i < I->getNumOperands(); ++i){
-      Instruction *Op;
-      if((Op = dyn_cast<Instruction>(I->getOperand(i))) and !visited->count(Op))
-        if(Op->getParent() == BB){
-          recursions.push_back(bfsBB(Op,BB,tier-1,visited));
+      visited->insert(I);
+      for(int i =0; i < I->getNumOperands(); ++i){
+        Instruction *Op;
+        if((Op = dyn_cast<Instruction>(I->getOperand(i))))
+            recursions.push_back(bfsBB(Op,BB,tier-1,visited));
       }
-    }
-    if((N = I->getMetadata("fuse.wardep"))){
-        Instruction *WARdep = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
-        if(!visited->count(WARdep))
+      if((N = I->getMetadata("fuse.wardep"))){
+          Instruction *WARdep = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
           recursions.push_back(bfsBB(WARdep,BB,tier+1,visited));
-    }
-    for(auto user = I->user_begin(); user != I->user_end();  ++user){
-      Instruction *Up = (Instruction*)*user;
-      if (Up->getParent() == BB){
+      }
+
+      for(auto user = I->user_begin(); user != I->user_end();  ++user){
+        Instruction *Up = (Instruction*)*user;
         recursions.push_back(bfsBB(Up,BB,tier+1,visited));
       }
-    }
-    if((N = I->getMetadata("fuse.rawdep"))){
-        Instruction *RAWdep = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
-        recursions.push_back(bfsBB(RAWdep,BB,tier+1,visited));
+      if((N = I->getMetadata("fuse.rawdep"))){
+          Instruction *RAWdep = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
+          recursions.push_back(bfsBB(RAWdep,BB,tier+1,visited));
+      }
     }
     return merge_vecs(recursions, I, tier);
 
 /*
-    for(auto user = I->user_begin(); user != I->user_end();  ++user){
-      Instruction *Up = (Instruction*)*user;
+    for(auto user = I->user_beg
       if (Up->getParent() == BB and !visited->count(Up))
         Up->moveAfter(I);
     }
-    
-    
 
     for(int i =0; i < I->getNumOperands(); ++i){
       Instruction *Op;
@@ -218,10 +214,64 @@ vector<pair<Instruction*,int> > bfsBB(Instruction *I, BasicBlock *BB, int tier,
         if(Op->getParent() == BB)
           Op->moveBefore(I);
     }
-
-
-
       return;*/
+}
+
+
+/* Topological sort Kahn's algorithm */
+void KahnSort(BasicBlock *BB){
+  list<Instruction*> S; // Nodes with no incoming edge
+  list<Instruction*> L; // Sorted elements
+  map<Instruction*,set<Instruction*> > EdgeList;
+
+  for(auto &I : *BB){
+    bool noincoming = true;
+    for(auto U = I.op_begin();U != I.op_end(); U++){
+      Instruction *IU = NULL;
+      if((IU = dyn_cast<Instruction>(*U))){
+         if(IU->getParent() == BB){
+           noincoming = false;
+         if(EdgeList.count(&I))
+          EdgeList[&I].insert(IU);
+         else{
+          set<Instruction*> tmp;
+          tmp.insert(IU);
+          EdgeList[&I] = tmp;
+          }
+        }
+      }
+    }
+    if(noincoming)
+      S.push_back(&I);
+  }
+
+
+  while(!S.empty()){
+    Instruction *A = S.front();
+    S.pop_front();
+    L.push_back(A);
+    for(auto M = A->user_begin();M != A->user_end();++M){
+      Instruction *IU = cast<Instruction>(*M);
+      if(IU->getParent() == BB){
+        EdgeList[IU].erase(A);
+        if(EdgeList[IU].empty())
+          S.push_back(cast<Instruction>(IU));
+      }
+    }
+    // TODO: SOLVE FOR MORE THAN 1 RAW DEP!!!!! TODO TODO TODO ERROR
+    MDNode *N = NULL;
+    if((N = A->getMetadata("fuse.rawdep"))){
+      Instruction *RAWdep = cast<Instruction>(cast<ValueAsMetadata>(N->getOperand(0))->getValue());
+      EdgeList[RAWdep].erase(A);
+      if(EdgeList[RAWdep].empty())
+        S.push_back(RAWdep);
+    }
+  }
+  
+  for(auto I = next(L.begin()); I != L.end();++I)
+    (*I)->moveAfter(*prev(I));
+
+  return;
 }
 
 /**
@@ -882,7 +932,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
       }
     }
     if(!B.empty()){ // Only if we merge with something
-      sortBB(C); // Sort instructions by producer-consumer relationship
+      KahnSort(C); // Sort instructions by producer-consumer relationship
       secureMem(C,SelVal,builder,&A, A.getModule()); // If loads are not merged, make sure they are safe to execute
     }
     for(auto &Ic: *C)

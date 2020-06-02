@@ -3,17 +3,18 @@
 #include <set>
 #include <vector>
 #include <iostream>
-#include <fstream>
 #include <iomanip>
 
 #include "BBManipulation.hpp"
 #include "BBAnalysis.hpp"
 #include "BBVisualization.hpp"
+#include "FuseSupport.hpp"
+
+#include "types/FusedBB.hpp"
 
 #include "llvm/Pass.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/CommandLine.h"
 
 #include "llvm/IR/LegacyPassManager.h"
@@ -26,6 +27,8 @@ static cl::opt<string> bbFileName("bbs",
     cl::desc("Specify file with BB names to merge"));
 static cl::opt<string> visualDir("graph_dir",
     cl::desc("Directory for graphviz files"),cl::Optional);
+static cl::opt<string> dynamicInfoFile("dynInf",
+    cl::desc("File with profiling information per BB"),cl::Optional);
 
 namespace {
 
@@ -50,6 +53,7 @@ namespace {
 
 		bool runOnModule(Module &M) override {
 			vector<BasicBlock*> bbList;
+      map<string,float> profileMap;
 			BasicBlock *auxBBptr = NULL;
 			BasicBlock *C, *auxC;
       error_code EC;
@@ -59,6 +63,9 @@ namespace {
         "elects),Other Instructions,Sequential Time,Memory Footprint (bits)"
         ",Critical Path Communication,Critical Path Computation,Area,"
         "Static Power,Dynamic Power,Efficiency\n";
+
+      // Read the dynamic info file
+      readDynInfo(dynamicInfoFile,&profileMap);
 
 			// Read the list of BBs to merge
 			fstream bbfile;
@@ -81,9 +88,14 @@ namespace {
 		  	bbList.push_back(bbs[i].second);
       }
 
-			if(bbList.size())
+			if(bbList.size()){
 				C = BasicBlock::Create(M.getContext(),"");
-        
+        //FusedBB *test = (FusedBB*)FusedBB::Create(M.getContext(),"");
+        //test->addMergedBB(C);
+        //errs() << test->getNumMerges();
+      }
+    
+      //mergeBBs(*bbList[0],*bbList[1]); 
 
 			for(auto& BB: bbList){
 				auxC = mergeBBs(*BB,*C);

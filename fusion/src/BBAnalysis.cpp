@@ -80,11 +80,11 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
  * @param *BB Reference Basic Block to compute the critical path in
  * @return critical path delay
  */
-float bfsCrit(Instruction *I, BasicBlock *BB){
+float dfsCrit(Instruction *I, BasicBlock *BB){
   float cost = 0;
   if ( I->getParent() == BB ){
     for(User *U : I->users()){
-      float tmp = bfsCrit((Instruction*)U,BB);
+      float tmp = dfsCrit((Instruction*)U,BB);
       if(tmp>cost)
         cost = tmp;
     }
@@ -115,7 +115,7 @@ pair<float,float> getCriticalPathCost(BasicBlock *BB){
   // If we have a receive data BB preceeding, compute it's cirtical path
   if((pred = BB->getSinglePredecessor()) and pred->getName() == "loadBB"){
     for(auto &I: *pred){
-      float tmp = bfsCrit(&I,pred);
+      float tmp = dfsCrit(&I,pred);
       if(tmp>tpred)
         tpred = tmp;
     }
@@ -123,14 +123,14 @@ pair<float,float> getCriticalPathCost(BasicBlock *BB){
   // If we have a send data BB succeding, compute it's cirtical path
   if((succ = BB->getSingleSuccessor()) and succ->getName() == "storeBB"){
     for(auto &I: *BB){
-      float tmp = bfsCrit(&I,succ);
+      float tmp = dfsCrit(&I,succ);
       if(tmp>tsucc)
         tsucc = tmp;
     }
   }
   // For each instruction in the basic block, find it's critical path
   for(auto &I: *BB){
-    float tmp = bfsCrit(&I,BB);
+    float tmp = dfsCrit(&I,BB);
     if(tmp>cost.second)
       cost.second = tmp;
   }
