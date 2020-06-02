@@ -4,3 +4,4 @@
 (cd multidep && ./extract.sh)
 (cd deploop && ./extract.sh)
 (cd storeorder  && ./extract.sh)
+(cd incremental  && ./extract.sh)

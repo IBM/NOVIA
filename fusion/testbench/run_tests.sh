@@ -4,3 +4,4 @@
 (cd multidep && ./test.sh)
 (cd deploop && ./test.sh)
 (cd storeorder  && ./test.sh)
+(cd incremental  && ./test.sh)
