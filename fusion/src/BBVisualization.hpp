@@ -1,7 +1,9 @@
-#include <string>
-#include <map>
+#include <stdio.h>
+#include <gvc.h>
+#include <sys/stat.h>
+#include <iostream>
+#include <fstream>
 
-#include "llvm/ADT/SetVector.h"
 
 #include "llvm/Pass.h"
 #include "llvm/Analysis/DDG.h"
@@ -10,13 +12,14 @@
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 
+#include "llvm/Support/raw_ostream.h"
+
 using namespace llvm;
 using namespace std;
 
-void drawBBGraph(BasicBlock*,ostream&);
+void drawBBGraph(BasicBlock*,char*,string);

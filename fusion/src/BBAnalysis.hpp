@@ -19,7 +19,11 @@
 using namespace llvm;
 using namespace std;
 
+
+// Analysis functions
 void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
-void memoryFootprintBB(BasicBlock*);
-void memoryFootprintF(Function*);
-void buildDAG(BasicBlock&,DirectedGraph<SimpleDDGNode,DDGEdge>*);
+void memRAWDepAnalysis(BasicBlock*,map<Value*,Value*> *,LLVMContext &);
+
+
+// Stats functions
+void getMetadataMetrics(BasicBlock*,vector<float>*, Module*);

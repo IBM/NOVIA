@@ -9,15 +9,12 @@ int main(int argn, char **argc){
 	}
 
 	int a = atoi(argc[1]) ;
-	for(int i=0; i < 100; ++i)
-		++a;
-
-	int i = 0;
-	while(i < 100){
-		++a;
-		++i;
+	if (a%2) {
+		a = a*2+2;
 	}
-
+	else {
+		a = (a+2)*2;
+	}
 	cout << "Result: " << a << endl;
 	return 0;
 }

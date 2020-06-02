@@ -36,5 +36,10 @@
 *.bc
 *.ll
 
+# Stats files
+*.csv
+
 # Folders
 build/
+imgs/
+
