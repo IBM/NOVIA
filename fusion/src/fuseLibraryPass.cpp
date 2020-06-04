@@ -89,6 +89,7 @@ namespace {
       }
 
 			if(bbList.size()){
+        FusedBB Fus = FusedBB(M.getContext(),"");
 				C = BasicBlock::Create(M.getContext(),"");
         //FusedBB *test = (FusedBB*)FusedBB::Create(M.getContext(),"");
         //test->addMergedBB(C);

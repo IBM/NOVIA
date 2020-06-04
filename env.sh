@@ -5,4 +5,4 @@ export GRAPHVIZ_ROOT=$DIR/graphviz/build/
 
 export LLVM_TOP=$DIR/llvm-project/
 export LLVM_ROOT=$DIR/llvm-project/build/
-export NUM_THREADS=1
+export NUM_THREADS=16
