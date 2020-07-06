@@ -178,9 +178,11 @@ float dfsCrit(Instruction *I, BasicBlock *BB){
   float cost = 0;
   if ( I->getParent() == BB ){
     for(User *U : I->users()){
-      float tmp = dfsCrit((Instruction*)U,BB);
-      if(tmp>cost)
-        cost = tmp;
+      if(!isa<PHINode>(U)){
+        float tmp = dfsCrit((Instruction*)U,BB);
+        if(tmp>cost)
+          cost = tmp;
+      }
     }
     return cost + getDelay(I);
   }
