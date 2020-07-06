@@ -28,11 +28,13 @@ type make and let the linking process finish with just 1 thread.
 1. Generate a bitcode file of the binary to analyze:
     
     ÂÂ·1. Use wllvm to generate the bin
+
     ÂÂ·2. Execute extract-bc $(BINARY_NAME) to generate the bitcode file
 
 2. Apply methodology:
 
     ÂÂ·1. cd fusion/analysis
+
     ÂÂ·2. Follow instructions in that folder's README.md
 
 ## Known Usage Issues
