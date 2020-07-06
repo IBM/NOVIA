@@ -29,6 +29,7 @@ link_directories($ENV{GRAPHVIZ_ROOT}/lib/)
 
 add_compile_options(-fno-rtti)
 add_compile_options(-ggdb)
-
+#add_compile_options(-O3)
+#add_compile_options(-fPIC)
 
 add_subdirectory(src)

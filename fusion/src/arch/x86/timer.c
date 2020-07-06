@@ -1,7 +1,6 @@
-unsigned long long int rdtsc(void){
-  unsigned long long int x;
-  unsigned a, d;
+__attribute__((always_inline)) unsigned long int rdtsc(void){
+  unsigned long a, d;
   
-  __asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
-  return ((unsigned long long)a)|(((unsigned long long)d) << 32);
+  __asm__ volatile("rdtscp" : "=a" (a), "=d" (d));
+  return (a|(d << 32));
 }
