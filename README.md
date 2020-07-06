@@ -2,9 +2,9 @@
 LLVM IR fusion library
 
 # Requirements
-wllvm
-cmake
-libgd-dev qt4-qmake libqt4-dev (for Graphviz)
+* wllvm
+* cmake
+* libgd-dev qt4-qmake libqt4-dev (for Graphviz)
 
 
 # Compilation Instructions
