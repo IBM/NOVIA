@@ -5,8 +5,9 @@
  *
  * @param BB BasicBlock to Visualize
  */
-void drawBBGraph(BasicBlock *BB,char *file,string dir){
+void drawBBGraph(FusedBB *fBB,char *file,string dir){
   struct stat buffer;
+  BasicBlock *BB = fBB->getBB();
 
   if(dir.empty()){
     errs() << "No directory specified - assuming default\n";
@@ -43,10 +44,11 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir){
     n = agnode(G,(char*)name.c_str(),1);
     visited.insert(pair<Instruction*,Agnode_t*>(&I,n));
     agsafeset(n,"shape","box","");
+    //agsafeset(n,"fillcolor","skyblue","");
     agsafeset(n,"fontsize","24","24");
 
     // If the node is merged change color
-    if(I.getMetadata("fuse.merged")){
+    if(fBB->isMergedI(&I)){
       agsafeset(n,"style","filled","");
       agsafeset(n,"fillcolor","purple","");
       agsafeset(n,"fontsize","24","24");

@@ -95,7 +95,7 @@ map<unsigned,int> area = {
   {Instruction::FRem,17298},
 };
 
-// In nJ
+// Energy model In nJ callibrated with Power8/9 measurements
 map<unsigned,float> energy = { 
   {Instruction::Br,0.5},
   {Instruction::Add,40.6},
@@ -141,7 +141,7 @@ map<unsigned,float> energy = {
   {Instruction::FRem,1069.2},
 };
 
-// Static power in nwatts
+// Static power in nwatts not callibrated
 map<unsigned,float> powersta = { 
   {Instruction::Br,0},
   {Instruction::Add,0.5},
@@ -188,6 +188,11 @@ map<unsigned,float> powersta = {
 };
 
 
+/**
+ * Get the delay in seconds 
+ *
+ * @param I Instruction to get the delay from
+ */
 float getDelay(Instruction *I){
   float ret = 0; // default value
   if(delay.count(I->getOpcode()))
@@ -197,6 +202,11 @@ float getDelay(Instruction *I){
   return ret;
 }
 
+/**
+ * Get the dynamic energy consumption in nanoJoules
+ *
+ * @param I Instruction to get the energy from
+ */
 float getEnergyDyn(Instruction *I){
   float ret = 0; // default value
   if(energy.count(I->getOpcode())){
@@ -208,6 +218,11 @@ float getEnergyDyn(Instruction *I){
   return ret;
 }
 
+/**
+ * Get the static power dissipation in nanoWatts
+ *
+ * @param I Instruction to get the static power from
+ */
 float getPowerSta(Instruction *I){
   float ret = 0; // default value
   if(powersta.count(I->getOpcode()))
@@ -217,6 +232,11 @@ float getPowerSta(Instruction *I){
   return ret;
 }
 
+/**
+ * Get hardware area in microns squared
+ *
+ * @param I Instruction to get the area from
+ */
 int getArea(Instruction *I){
   int ret = 0; // default value
   if(area.count(I->getOpcode()))

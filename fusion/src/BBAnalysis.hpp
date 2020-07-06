@@ -7,6 +7,7 @@
 #include "llvm/Analysis/DDG.h"
 #include "llvm/ADT/DirectedGraph.h"
 #include "llvm/IR/Type.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IRBuilder.h"
@@ -20,7 +21,11 @@ using namespace llvm;
 using namespace std;
 
 
+Value *getSafePointer(PointerType*, Module*);
 // Analysis functions
+bool areOpsMergeable(Value*,Value*,BasicBlock*,BasicBlock*,
+                    map<Value*,Value*>*);
+bool areInstMergeable(Instruction&,Instruction&);
 void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
 void memRAWDepAnalysis(BasicBlock*,map<Value*,Value*> *,LLVMContext &);
 

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 
+#include "types/FusedBB.hpp"
 
 #include "llvm/Pass.h"
 #include "llvm/Analysis/DDG.h"
@@ -22,4 +23,4 @@
 using namespace llvm;
 using namespace std;
 
-void drawBBGraph(BasicBlock*,char*,string);
+void drawBBGraph(FusedBB*,char*,string);

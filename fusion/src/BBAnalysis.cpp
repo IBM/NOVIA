@@ -1,6 +1,87 @@
 #include "BBAnalysis.hpp"
 #include "Maps.hpp"
 
+//TODO: Check if we have to create a (new) GV or we can just get one with 
+//the same value troguht some getter funciont on the module or somethign
+Value *getSafePointer(PointerType *O, Module *M){
+  Value *V =  new GlobalVariable(*M,O->getPointerElementType(),false,GlobalValue::ExternalLinkage,Constant::getNullValue(O->getPointerElementType()));
+  return V;
+}
+
+/**
+ * Checks if operands can be merged, returns true if they are
+ *
+ * @param &Ia instruction to check
+ * @param &Ib instruction to check
+ * @param &IRBuilder for inserting select instructions
+ * @return operands merge
+ */
+bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B,
+                    map<Value*,Value*> *SubOp){
+	bool sameValue = false;
+	bool isLiveIn = false;
+	bool isInstMerg = false;
+  bool isConstant = false;
+  bool isSameType = false;
+  bool sameOpAfterMerge = false;
+
+	sameValue = opA == opB;
+  // Inst are same Value Constants
+  bool isSame = sameValue;
+  isConstant = isa<Constant>(opA) or isa<Constant>(opB);
+  isSameType = opA->getType() == opB->getType();
+	// If operands come from oustide the BB, they are fusable LiveIns
+	isLiveIn = ((Instruction*)opA)->getParent() != A &&
+			((Instruction*)opB)->getParent() != B;
+		// If operands come from mergeable Instructions
+	isInstMerg = areInstMergeable(*(Instruction*)opA,*(Instruction*)opB);
+  if(SubOp->count(opB)){
+    sameOpAfterMerge = opA == (*SubOp)[opB];
+  }
+	return (sameValue and isConstant) or (isSameType and isLiveIn and !isConstant) or (isSameType and isInstMerg and !isConstant and sameOpAfterMerge);
+}
+
+/**
+ * Checks if two instructions are mergeable, returns true if they are
+ *
+ * @param *Ia Instruction to check
+ * @param *Ib Instruction to check
+ * @return true if mergeable, false otherwise
+ */
+bool areInstMergeable(Instruction &Ia, Instruction &Ib){
+	// Same opcode
+	bool opcode = Ia.getOpcode() == Ib.getOpcode();
+  if(opcode and isa<CmpInst>(Ia)){
+    opcode &= cast<CmpInst>(Ia).getPredicate() == cast<CmpInst>(Ib).getPredicate();
+  }
+
+  // If operands are loads, they must be loading the same type of data
+  // TODO: Check if this can be generalized to ints vs floats
+  bool loadty = opcode;
+  if (loadty and isa<LoadInst>(Ia))
+    loadty = cast<LoadInst>(Ia).getPointerOperandType() ==
+             cast<LoadInst>(Ib).getPointerOperandType();
+  // Same for stores
+  bool storety = opcode;
+  if (storety and isa<StoreInst>(Ia))
+    storety = cast<StoreInst>(Ia).getPointerOperandType() ==
+              cast<StoreInst>(Ib).getPointerOperandType();
+  // Some getelemptr have different amount of operands
+  // TODO: Check if those can be merged, for now we are leaving them asside
+  bool numops = Ia.getNumOperands() == Ib.getNumOperands();
+  // Check operand compatibility
+  bool samety = Ia.getType() == Ib.getType();
+  if(opcode and samety and numops)
+    for(int i=0;i<Ia.getNumOperands();++i){
+      samety &= Ia.getOperand(i)->getType() == Ib.getOperand(i)->getType();
+    }
+
+  // Do not merge select instructions, we will deal with this in later 
+  // optimization steps
+  bool noselect = !isa<SelectInst>(Ia);
+	return opcode and loadty and storety and numops and noselect and samety;
+}
+
 /**
  * This function annotates all the RAW memory depedences. It attaches a Value
  * as Metadata to each store indicating what load reads that data. Dependence 
@@ -59,7 +140,19 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
 	CodeExtractor CE = CodeExtractor(BBs);
 
 	CE.findInputsOutputs((ValueSet&)*LiveIn,(ValueSet&)*LiveOut,Allocas);
-  
+  /* 
+  for(auto &I: BB){
+    for(int i = 0; i < I.getNumOperands(); ++i){
+      Value *V = I.getOperand(i);
+      if(isa<Instruction>(V) && cast<Instruction>(V)->getParent() != &BB)
+        LiveIn->insert(V);
+    }
+    for(auto U : I.users()){
+      Instruction *UI = (Instruction*)U;
+      if(UI->getParent() != &BB)
+        LiveOut->insert(cast<Value>(UI));
+    }
+  }*/
   // If a variable is annotated as liveout, we add it to the list of LiveOuts
   // Developer can force out values this way.
   for(auto I=BB.begin(), E=BB.end(); I != E; ++I){
@@ -80,6 +173,7 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
  * @param *BB Reference Basic Block to compute the critical path in
  * @return critical path delay
  */
+
 float dfsCrit(Instruction *I, BasicBlock *BB){
   float cost = 0;
   if ( I->getParent() == BB ){
@@ -92,6 +186,7 @@ float dfsCrit(Instruction *I, BasicBlock *BB){
   }
   return 0;
 }
+
 
 /**
  * This functions computes the critical path delay in a given BasicBlock.
@@ -108,6 +203,8 @@ float dfsCrit(Instruction *I, BasicBlock *BB){
  */
 // TODO: Improve efficiency by not traversing instructions already visited
 // by other critical path computaions
+//
+
 pair<float,float> getCriticalPathCost(BasicBlock *BB){
   pair<float,float> cost = pair<int,int>(0,0); // Overhead, Computation
   float tpred = 0, tsucc = 0;
@@ -149,6 +246,7 @@ pair<float,float> getCriticalPathCost(BasicBlock *BB){
  * @param *data Vector to be filled with the statitstics value
  * @param *M LLVM Module
  */
+
 void getMetadataMetrics(BasicBlock *BB, vector<float> *data, Module *M){
   MDNode *N;
 	DataLayout DL  = M->getDataLayout();
@@ -222,3 +320,4 @@ void getMetadataMetrics(BasicBlock *BB, vector<float> *data, Module *M){
   // Synthesis tools: https://core.ac.uk/download/pdf/55728609.pdf
   return;
 }
+

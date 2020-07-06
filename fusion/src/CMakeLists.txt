@@ -6,8 +6,11 @@ add_library(fusionlib SHARED
   FuseSupport.cpp
   types/FusedBB.cpp)
 
+add_library(instrumentlib SHARED
+  instrumentLibraryPass.cpp)
+
 #This is wrong but will work for now
 
-#add_subdirectory(types)
+add_subdirectory(arch)
 
 target_link_libraries(fusionlib gvc cgraph cdt)
