@@ -100,7 +100,6 @@ namespace {
       }
       
       //STATS
-      stats << "\n";
       for(int i= 0; i < prebb.size(); ++i){
         stats << bbList[i]->getName() << ",";
         for(int j = 0; j < prebb[i]->size(); ++j){
@@ -223,7 +222,7 @@ namespace {
           max_sel = vCandidates[i].first >= max ? i : max_sel;
           max = vCandidates[i].first >= max? vCandidates[i].first : max;
         }
-        stats.seek(-1); // Dump stats before risky operations
+        stats.flush(); // Flush buffer before dangerous operations
 				Foff = vCandidates[max_sel].second->createOffload(&M);
 				vCandidates[max_sel].second->insertCall(Foff,&bbList);
         vCandidates.erase(vCandidates.begin()+max_sel);
