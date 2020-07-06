@@ -1,11 +1,22 @@
 source ../../env.sh
 
+if [ "$#" -ne 4 ]; then
+  echo "Missing arguments. Usage:"
+  echo "./analyze.sh BITCODE_PATH \"EXECUTABLE_INPUT_ARGUMENTS\" NUM_BB_CANDIDATES MERGE_Y/N"
+  echo "\tBITCODE_PATH: Path to the bitcode file to analyze"
+  echo "\tEXECUTABLE_INPUT_ARGUMENTS: Input arguments to execute the binary"
+  echo "\tNUM_BB_CANDIDATES: Number of bb candidates to merge"
+  echo "\tMERGE_Y/N: y or n. Indicating whether to apply the merge methodology or not"
+  exit
+fi
+
 name_ext="$(basename $1)"
 name="${name_ext%.*}"
 name_rn="${name}_rn.bc"
 name_rn_inl="${name}_rn_inl.bc"
 name_ins="${name}_rn_ins.bc"
 name_ins_bin="${name}_rn_ins.bin"
+
 
 echo $name
 mkdir -p $name
