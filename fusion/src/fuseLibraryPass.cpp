@@ -98,6 +98,17 @@ namespace {
         prebb[prebb.size()-1]->push_back(profileMap[bbs[i].second->getName().str()]);
 		  	bbList.push_back(bbs[i].second);
       }
+      
+      //STATS
+      stats << "\n";
+      for(int i= 0; i < prebb.size(); ++i){
+        stats << bbList[i]->getName() << ",";
+        for(int j = 0; j < prebb[i]->size(); ++j){
+          stats << format("%.5e",(*prebb[i])[j]) << ",";
+        }
+        stats << "\n";
+      }
+      stats << "\n";
 
       // Merge Orderings
       vector<vector<int> > order;
@@ -212,6 +223,7 @@ namespace {
           max_sel = vCandidates[i].first >= max ? i : max_sel;
           max = vCandidates[i].first >= max? vCandidates[i].first : max;
         }
+        stats.seek(-1); // Dump stats before risky operations
 				Foff = vCandidates[max_sel].second->createOffload(&M);
 				vCandidates[max_sel].second->insertCall(Foff,&bbList);
         vCandidates.erase(vCandidates.begin()+max_sel);
@@ -219,19 +231,7 @@ namespace {
      
       for(auto E : vCandidates) 
         delete E.second;
-      
-
-      //STATS
-      stats << "\n";
-      for(int i= 0; i < prebb.size(); ++i){
-        stats << bbList[i]->getName() << ",";
-        for(int j = 0; j < prebb[i]->size(); ++j){
-          stats << format("%.5e",(*prebb[i])[j]) << ",";
-        }
-        stats << "\n";
-      }
-      stats << "\n";
-			
+      	
       return false;
 		}
 	};
