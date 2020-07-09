@@ -10,11 +10,11 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir){
   BasicBlock *BB = fBB->getBB();
 
   if(dir.empty()){
-    errs() << "No directory specified - assuming default\n";
+    errs() << "No visualization directory specified - assuming default\n";
     dir = "imgs";
   }
   if(stat(dir.c_str(),&buffer)){
-    errs() << "Directory does not exist - creating it...\n";
+    errs() << "Visualization directory does not exist - creating it...\n";
     mkdir(dir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
   }
 

@@ -390,6 +390,7 @@ void separateBr(BasicBlock *BB){
       IRBuilder<> builder(BB->getContext());
       BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
         BB->getParent());
+      BB->replaceSuccessorsPhiUsesWith(newBB);
       I->moveBefore(*newBB,newBB->begin());
       builder.SetInsertPoint(BB);
       builder.CreateBr(newBB);
@@ -402,6 +403,7 @@ void separateBr(BasicBlock *BB){
     IRBuilder<> builder(BB->getContext());
     BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
       BB->getParent());
+    BB->replaceSuccessorsPhiUsesWith(newBB);
     I->moveBefore(*newBB,newBB->begin());
     builder.SetInsertPoint(BB);
     builder.CreateBr(newBB);
@@ -413,10 +415,10 @@ void separateBr(BasicBlock *BB){
     IRBuilder<> builder(BB->getContext());
     BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
       BB->getParent());
+    BB->replaceSuccessorsPhiUsesWith(newBB);
     I->moveBefore(*newBB,newBB->begin());
     builder.SetInsertPoint(BB);
     builder.CreateBr(newBB);
-
   }
 }
 

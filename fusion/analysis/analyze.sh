@@ -1,12 +1,12 @@
-source ../../env.sh
+source /home/dtrilla/git/fuseacc/env.sh
 
 if [ "$#" -ne 4 ]; then
-  echo "Missing arguments. Usage:"
+  echo "Wrong Number of Arguments ($#, 4 required). Usage:"
   echo "./analyze.sh BITCODE_PATH \"EXECUTABLE_INPUT_ARGUMENTS\" NUM_BB_CANDIDATES MERGE_Y/N"
-  echo "\tBITCODE_PATH: Path to the bitcode file to analyze"
-  echo "\tEXECUTABLE_INPUT_ARGUMENTS: Input arguments to execute the binary"
-  echo "\tNUM_BB_CANDIDATES: Number of bb candidates to merge"
-  echo "\tMERGE_Y/N: y or n. Indicating whether to apply the merge methodology or not"
+  echo -e "\tBITCODE_PATH: Path to the bitcode file to analyze"
+  echo -e "\tEXECUTABLE_INPUT_ARGUMENTS: Input arguments to execute the binary"
+  echo -e "\tNUM_BB_CANDIDATES: Number of bb candidates to merge"
+  echo -e "\tMERGE_Y/N: y or n. Indicating whether to apply the merge methodology or not"
   exit
 fi
 

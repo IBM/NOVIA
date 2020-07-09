@@ -77,12 +77,20 @@ namespace {
         if(profileMap.count(bb_name))
           total_percent += profileMap[bb_name];
       }
-      float aux = 0;
-      for(auto E: profileMap)
-        aux += E.second;
       
-      for(auto E : profileMap)
-        profileMap[E.first] = E.second/total_percent;
+      // If no weights are defined, use equal weights for everybody
+      if(profileMap.empty()){
+        float size = bbs.size();
+        for(auto E : bbs)
+          profileMap[E.first] = 1.0/size;
+      }
+      else{
+        float aux = 0;
+        for(auto E: profileMap)
+          aux += E.second;
+        for(auto E : profileMap)
+          profileMap[E.first] = E.second/total_percent;
+      }
 		
       // Search BB to merge
       for(Function &F: M)
