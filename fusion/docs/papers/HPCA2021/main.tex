@@ -1,0 +1,84 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This is the template for submission to HPCA 2020
+% The cls file is a modified from  'sig-alternate.cls'
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% https://www.hpca-conf.org/2020/wp-content/uploads/2019/07/hpca26_sample.pdf
+% https://www.hpca-conf.org/2020/wp-content/uploads/2019/07/hpca26-latex-template.tar.gz
+
+\documentclass{sig-alternate}
+\setlength{\paperheight}{11in}
+\setlength{\paperwidth}{8.5in}
+
+\newcommand{\ignore}[1]{}
+\usepackage[pass]{geometry}
+\usepackage{fancyhdr}
+\usepackage[normalem]{ulem}
+\usepackage[hyphens]{url}
+\usepackage{hyperref}
+\usepackage{color}
+\usepackage{soul}
+
+%%%%%%%%%%%---SETME-----%%%%%%%%%%%%%
+\newcommand{\hpcasubmissionnumber}{XXX}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\sethlcolor{white}
+
+% When sethlcolor is white, your highlights will not show up.  Use
+% \sethlcolor{white} to submit your paper pdf.  When compiling your second
+% pdf with highlighted changes, simply remove \sethlcolor{white} and add your
+% optional 100-word appendix.
+% Use \hl{ ... } to highlight any text.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\fancypagestyle{firstpage}{
+  \fancyhf{}
+\setlength{\headheight}{50pt}
+\renewcommand{\headrulewidth}{0pt}
+  \fancyhead[C]{\normalsize{HPCA 2020 Submission
+      \textbf{\#\hpcasubmissionnumber} -- Confidential Draft -- Do NOT Distribute!!}}
+  \pagenumbering{arabic}
+}
+
+%%%%%%%%%%%---SETME-----%%%%%%%%%%%%%
+\title{CRUCIBLE: Computationally-RedUctible Complex Inline AccelerataBLE Units}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+\maketitle
+\thispagestyle{firstpage}
+\pagestyle{plain}
+
+
+
+%%%%%% -- PAPER CONTENT STARTS-- %%%%%%%%
+
+\begin{abstract}
+
+Computer and system architecture is currently experiencing a revolution. The dramatic
+increase in workload variety and the usage of accelerators is shifting the paradigm from general-purpose
+processors (GPP) providing the bulk of the performance, to more specialized units (i.e. accelerators) with tailored
+design and specific to the task at which they excel. This has lead to the rise of new System-on-Chip (SoC) architectures
+where GPP are complimented with a variety of heterogeneous accelerators. However, developing new hardware specific
+for each application is a costly endeveour not only in development costs but also verification costs. More over, which
+code region should be accelerated is of paramount importance to the designer, as each accelerator is tailored to a particular code region (i.e. functionality).
+In this paper we present CRUCIBLE, an end-to-end methodology to derive Computationally-RedUctible Complex Inline AccelerataBLE Units
+tailored to each application providing to the system designer an agile, systematic and cheap procedure to derive area-efficient by merging 
+accelerator functionality, which does not only provide performance benefits with low area overhead, but is easily verifiable and highly integratable as they 
+are part of the core.
+
+\end{abstract}
+
+\input{intro}
+\section{Acknowledgements}
+
+
+%%%%%%% -- PAPER CONTENT ENDS -- %%%%%%%%
+
+
+%%%%%%%%% -- BIB STYLE AND FILE -- %%%%%%%%
+\bibliographystyle{ieeetr}
+\bibliography{ref}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\end{document}
