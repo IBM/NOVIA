@@ -28,6 +28,7 @@ bool areOpsMergeable(Value*,Value*,BasicBlock*,BasicBlock*,
 bool areInstMergeable(Instruction&,Instruction&);
 void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
 void memRAWDepAnalysis(BasicBlock*,map<Value*,Value*> *,LLVMContext &);
+pair<float,float> getCriticalPathCost(BasicBlock *);
 
 
 // Stats functions

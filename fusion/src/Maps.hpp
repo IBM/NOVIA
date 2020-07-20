@@ -4,7 +4,7 @@ using namespace std;
 using namespace llvm;
 
 // Weight Delay model taken from Region Seeker - Giorgios et al. in nS
-map<unsigned,float> delay = {
+static map<unsigned,float> delay = {
   {Instruction::Br,0.001},
   {Instruction::Add,0.92},
   {Instruction::Sub,0.92},
@@ -50,7 +50,7 @@ map<unsigned,float> delay = {
 };
 
 // Weight model taken from Region Seeker by Gioergios et al. in uM^2
-map<unsigned,int> area = {
+static map<unsigned,int> area = {
   {Instruction::Br,1},
   {Instruction::Add,160},
   {Instruction::Sub,173},
@@ -96,7 +96,7 @@ map<unsigned,int> area = {
 };
 
 // Energy model In nJ callibrated with Power8/9 measurements
-map<unsigned,float> energy = { 
+static map<unsigned,float> energy = { 
   {Instruction::Br,0.5},
   {Instruction::Add,40.6},
   {Instruction::Sub,40.6},
@@ -142,7 +142,7 @@ map<unsigned,float> energy = {
 };
 
 // Static power in nwatts not callibrated
-map<unsigned,float> powersta = { 
+static map<unsigned,float> powersta = { 
   {Instruction::Br,0},
   {Instruction::Add,0.5},
   {Instruction::Sub,0.5},
@@ -193,7 +193,7 @@ map<unsigned,float> powersta = {
  *
  * @param I Instruction to get the delay from
  */
-float getDelay(Instruction *I){
+static float getDelay(Instruction *I){
   float ret = 0; // default value
   if(delay.count(I->getOpcode()))
     ret = delay[I->getOpcode()]/1000000000; // from ns to seconds
@@ -207,7 +207,7 @@ float getDelay(Instruction *I){
  *
  * @param I Instruction to get the energy from
  */
-float getEnergyDyn(Instruction *I){
+static float getEnergyDyn(Instruction *I){
   float ret = 0; // default value
   if(energy.count(I->getOpcode())){
     ret = energy[I->getOpcode()]-28;
@@ -223,7 +223,7 @@ float getEnergyDyn(Instruction *I){
  *
  * @param I Instruction to get the static power from
  */
-float getPowerSta(Instruction *I){
+static float getPowerSta(Instruction *I){
   float ret = 0; // default value
   if(powersta.count(I->getOpcode()))
     ret = powersta[I->getOpcode()];
@@ -237,7 +237,7 @@ float getPowerSta(Instruction *I){
  *
  * @param I Instruction to get the area from
  */
-int getArea(Instruction *I){
+static int getArea(Instruction *I){
   int ret = 0; // default value
   if(area.count(I->getOpcode()))
     ret = area[I->getOpcode()];

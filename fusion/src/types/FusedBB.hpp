@@ -4,14 +4,17 @@
 #include <set>
 #include <map>
 #include <string>
+#include <algorithm>
 
 #include "../BBAnalysis.hpp"
+#include "../Maps.hpp"
 
 #include "llvm/Pass.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
 #include "llvm/ADT/SetVector.h"
@@ -91,6 +94,10 @@ class FusedBB{
     string getName();
     unsigned getStoreDomain(Instruction*,BasicBlock*);
     BasicBlock* getBB();
+    void getMetrics(vector<float>*,Module*);
+  
+    // Hardware
+    //bool getVerilog(raw_fd_stream&);
 
     // tester functions
     bool isMergedBB(BasicBlock*);

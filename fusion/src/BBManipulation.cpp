@@ -381,6 +381,35 @@ void annotateMerge(Instruction *I){
  */
 // TODO: Merge those ifs
 void separateBr(BasicBlock *BB){
+  if (isa<PHINode>(BB->begin())){
+    IRBuilder<> builder(BB->getContext());
+    BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"phis"+BB->getName(),
+        BB->getParent(),BB);
+    builder.SetInsertPoint(newBB);
+    builder.CreateBr(BB);
+    vector<BasicBlock*> pred_list;
+    for(BasicBlock *pred: predecessors(BB))
+      if(pred != newBB)
+        pred_list.push_back(pred);
+
+    for(BasicBlock *pred : pred_list){
+        Instruction *term = pred->getTerminator();
+        if(isa<BranchInst>(term)){
+          BranchInst *termb = cast<BranchInst>(pred->getTerminator());
+          for(int i = 0; i < termb->getNumSuccessors(); ++i)
+            if(termb->getSuccessor(i) == BB)
+              termb->setSuccessor(i,newBB);
+        }
+        else{
+          SwitchInst *terms = cast<SwitchInst>(pred->getTerminator());
+          for(int i = 0; i < terms->getNumSuccessors(); ++i)
+            if(terms->getSuccessor(i) == BB)
+              terms->setSuccessor(i,newBB);
+        }
+      }
+    while(isa<PHINode>(BB->begin()))
+      BB->begin()->moveBefore(*newBB,newBB->begin());
+  }
   Instruction *I = BB->getTerminator();
   if(isa<BranchInst>(I)){
     if(cast<BranchInst>(I)->isConditional()){

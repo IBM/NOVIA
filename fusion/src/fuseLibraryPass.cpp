@@ -62,7 +62,7 @@ namespace {
         " of Merged Instructions,Num Inst,Num Loads,Num Stores,Num Muxs (S"
         "elects),Other Instructions,Sequential Time,Memory Footprint (bits)"
         ",Critical Path Communication,Critical Path Computation,Area,"
-        "Static Power,Dynamic Power,Efficiency,Merit,%DynInstr\n";
+        "Static Power,Dynamic Power,Efficiency,%DynInstr,Merit\n";
 
       // Read the dynamic info file
       readDynInfo(dynamicInfoFile,&profileMap);
@@ -153,7 +153,8 @@ namespace {
             index_map.insert(pair<int,int>(i,j));
     
             fused[i] = new vector<float>;
-            getMetadataMetrics(FusedBBs[i]->getBB(),fused[i],&M);
+            FusedBBs[i]->getMetrics(fused[i],&M);
+            //getMetadataMetrics(FusedBBs[i]->getBB(),fused[i],&M);
             ++i;
           }
   
