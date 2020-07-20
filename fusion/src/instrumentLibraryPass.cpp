@@ -76,23 +76,45 @@ namespace {
             Builder.CreateStore(newaccum,tableGV[&BB]);
           }
       }
-
-      vector<Type*> printfArgsTypes({Builder.getInt8PtrTy()});
-      FunctionType *printfTy = FunctionType::get(Builder.getInt32Ty(),printfArgsTypes,true);
-      //Function *printf =Function::Create(printfTy,Function::ExternalLinkage,"printf",&M);
-      Function *printf = cast<Function>(M.getOrInsertFunction("printf",printfTy).getCallee());
+      // Open file and get FileDescriptor
       FunctionType *collectTy = FunctionType::get(Builder.getVoidTy(),false);
       Function *collect = Function::Create(collectTy,Function::ExternalLinkage,"profiler_collector",&M);
       appendToGlobalDtors(M,collect,0);
       BasicBlock *collectBB = BasicBlock::Create(M.getContext(),"collectBB",collect);
       Builder.SetInsertPoint(collectBB);
-      Value *printfString = Builder.CreateGlobalStringPtr("hist:%s %zd\n");
+      // Function Prototypes
+      vector<Type*> openArgsTypes({Builder.getInt8PtrTy(),Builder.getInt32Ty()});
+      FunctionType *openTy = FunctionType::get(Builder.getInt32Ty(),openArgsTypes,true);
+      vector<Type*> sprintfArgsTypes({Builder.getInt8PtrTy(),Builder.getInt8PtrTy()});
+      FunctionType *sprintfTy = FunctionType::get(Builder.getInt32Ty(),sprintfArgsTypes,true);
+      vector<Type*> writeArgsTypes({Builder.getInt32Ty(),Builder.getInt8PtrTy(),Builder.getInt64Ty()});
+      FunctionType *writeTy = FunctionType::get(Builder.getInt64Ty(),writeArgsTypes,false);
+      Function *open = cast<Function>(M.getOrInsertFunction("open",openTy).getCallee());
+      Function *sprintf = cast<Function>(M.getOrInsertFunction("sprintf",sprintfTy).getCallee());
+      Function *write = cast<Function>(M.getOrInsertFunction("write",writeTy).getCallee());
+      Value *openFile = Builder.CreateGlobalStringPtr("histogram.txt");
+      Value *mask = Builder.getInt32(578);
+      Value *permissions = Builder.getInt32(438); //666
+      vector<Value*> openArgs({openFile,mask,permissions});
+
+    
+      Value *fd = Builder.CreateCall(open,openArgs);
+      ArrayType *bufferTy = ArrayType::get(Builder.getInt8PtrTy(),100);
+      Value *buffer = Builder.CreateAlloca(bufferTy);
+      Value *bufferPtr = Builder.CreateBitCast(buffer,Builder.getInt8PtrTy());
+      //Builder.CreateCall();
+
+      // Collect function to gather stats
+      Value *sprintfString = Builder.CreateGlobalStringPtr("%s %zd\n");
       for(auto GV : tableGV){
 
         GlobalVariable *bbName = Builder.CreateGlobalString(GV.first->getName());
         Value *counter = Builder.CreateLoad(Builder.getInt64Ty(),GV.second);
-        vector<Value*> Args({printfString,bbName,counter});
-        Builder.CreateCall(printf,Args);
+        vector<Value*> sprintfArgs({bufferPtr,sprintfString,bbName,counter});
+        Value *size = Builder.CreateCall(sprintf,sprintfArgs);
+        Value *size64 = Builder.CreateZExtOrBitCast(size,Builder.getInt64Ty());
+        vector<Value*> writeArgs({fd,bufferPtr,size64});
+        Builder.CreateCall(write,writeArgs);
       }
       Builder.CreateRetVoid();
 

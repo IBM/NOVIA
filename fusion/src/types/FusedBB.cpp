@@ -1,5 +1,6 @@
 #include "FusedBB.hpp"
 
+
 FusedBB::~FusedBB(){
   delete mergedBBs;
   delete LiveOut;
@@ -239,7 +240,7 @@ bool FusedBB::checkNoLoop(Instruction *Iref, Instruction *Isearch, BasicBlock *B
             if(Iorig->getParent() == BB)
               noloop &= checkNoLoop(Iref,Iorig,BB);  
         }
-        else if(Up->getParent() == Isearch->getParent())
+        if(Up->getParent() == Isearch->getParent())
           noloop &= checkNoLoop(Iref,Up,BB);
       }
       if(rawDeps->count(Isearch)){
@@ -301,7 +302,7 @@ void FusedBB::mergeBB(BasicBlock *BB){
   for(Instruction &Ic: *this->BB){
     for(int j =0;j<Ic.getNumOperands(); ++j){
       Value *Vc = Ic.getOperand(j);
-      if(SubOp.count(Vc))
+      if(SubOp.count(Vc) and find(LiveInBB.begin(),LiveInBB.end(),Vc) == LiveInBB.end() and find(LiveOutBB.begin(),LiveOutBB.end(),Vc) == LiveOutBB.end())
         Ic.setOperand(j,SubOp[Vc]);
     }
   }
@@ -507,6 +508,31 @@ string FusedBB::getName(){
 BasicBlock* FusedBB::getBB(){
   return BB;
 }
+/*
+bool FusedBB::getVerilog(raw_fd_stream &out){
+  SetVector<Value*> LiveIn, LiveOut;
+  liveInOut(this->BB, &LiveIn, &LiveOut);
+  out() << "module " << this->BB->getName() << " (\n";
+  for (auto inV : LiveIn){
+    out() "input wire [" << inV->getIntegerBitWidth()-1 << ":0] " << inV->getName() << ",\n";
+  }
+  for (auto outV : LiveOut){
+    out() "output wire [" << outV->getIntegerBitWidth()-1 << ":0] " << outV->getName() << ",\n";
+  }
+  out() << ");\n\n";
+
+  map<Instruction*,string> wireNames;
+  int count = 0;
+  for(auto I : *this->BB){
+    out() << "wire [" << I->getType()->getIntegerBitWidth()-1 << ":0] "
+
+
+  }
+
+
+  out() << "endmodule";
+  return true;
+}*/
     
 void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* BB){
   // What BB does this merge come from
@@ -524,6 +550,10 @@ void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* 
   if(!fuseMap->count(Imerg))
     (*fuseMap)[Imerg] = new set<Instruction*>;
   (*fuseMap)[Imerg]->insert(Iorig);
+
+  // Only for debug purposes
+  //MDNode *N = MDNode::get(Iorig->getContext(),NULL);
+  //Imerg->setMetadata("is.merged",N);
 
   return;
 }
@@ -656,7 +686,7 @@ void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* 
  * @param *data Vector to be filled with the statitstics value
  * @param *M LLVM Module
  */
-/*
+
 void FusedBB::getMetrics(vector<float> *data, Module *M){
   MDNode *N;
 	DataLayout DL  = M->getDataLayout();
@@ -725,7 +755,7 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
   float eff_comp = useful/(crit_path.second*area*power)/1e9;
   //data->push_back(eff_comp);
   return;
-}*/
+}
 
 
 
@@ -750,8 +780,8 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
     // Same for Live Outs
     //linkPositionalLiveInOut(&BB);
     
-    for(auto &I : *BB)
-      I.dump();
+    //for(auto &I : *BB)
+    //  I.dump();
 
     int pos = 0;
     for(auto Vin: LiveIn){
@@ -768,6 +798,13 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
         (*(*liveInPos)[Vin])[NULL] = pos;
       }
       else if (isa<Argument>(Vin)){
+        if(linkOps->count(Vin)){
+          for(auto Vorig: *(*linkOps)[Vin]){
+            if(!liveInPos->count(Vorig.first))
+              (*liveInPos)[Vorig.first] = new map<BasicBlock*,int>;
+            (*(*liveInPos)[Vorig.first])[Vorig.second] = pos;
+          }
+        }
         if(!liveInPos->count(Vin))
           (*liveInPos)[Vin] = new map<BasicBlock*,int>;
         (*(*liveInPos)[Vin])[NULL] = pos;
@@ -775,11 +812,13 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
       pos++;
     }
 
+    for(auto Vout : *this->LiveOut)
+      if(!liveOutPos->count(Vout.second))
+        (*liveOutPos)[Vout.second] = -1;
+        
     pos = 0;
-    for(auto Vout : LiveOut){
-      (*liveOutPos)[Vout] = pos;
-      pos++;
-    }
+    for(auto Vout : *this->liveOutPos)
+      (*liveOutPos)[Vout.first] = pos++;
 
 
     // Instantate all LiveIn values as Inputs types
@@ -787,8 +826,8 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
       inputTypes.push_back(V->getType());
     }
     // Instantate all LiveOut values as Output types
-    for(Value *V: LiveOut){
-      outputTypes.push_back(V->getType());
+    for(auto V: *this->liveOutPos){
+      outputTypes.push_back(V.first->getType());
     }
 
     // Input/Output structs
@@ -844,9 +883,13 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
       Builder.SetInsertPoint(storeBB);
       //Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
       Value *outData = Builder.CreateAlloca(outStruct);
-      for(int i=0;i<LiveOut.size();++i){
+      /*for(int i=0;i<LiveOut.size();++i){
         Value *outGEPData = Builder.CreateStructGEP(outData,i);
         Builder.CreateStore(LiveOut[i],outGEPData);
+      }*/
+      for(auto Vout : *this->liveOutPos){
+        Value *outGEPData = Builder.CreateStructGEP(outData,Vout.second);
+        Builder.CreateStore(Vout.first,outGEPData);
       }
       Builder.CreateRet(outData);
   
@@ -858,7 +901,7 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
     verifyFunction(*f,&errs());
     verifyModule(*Mod,&errs());
 
-    f->dump();
+    //f->dump();
     //Mod->dump();
 
     // Output Result
