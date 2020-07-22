@@ -16,4 +16,6 @@ float getWeight(vector<BasicBlock*>*,vector<vector<float>*>*,vector<float> *, Fu
     map<string,double>*);
 float getMerit(vector<BasicBlock*>*,vector<vector<float>*>*,vector<float> *, FusedBB*,
     map<string,double>*);
+float getSavedArea(vector<BasicBlock*>*,vector<vector<float>*>*,vector<float> *, FusedBB*,
+    map<string,double>*);
 void readDynInfo(string, map<string,double>*);

@@ -62,7 +62,7 @@ namespace {
         " of Merged Instructions,Num Inst,Num Loads,Num Stores,Num Muxs (S"
         "elects),Other Instructions,Sequential Time,Memory Footprint (bits)"
         ",Critical Path Communication,Critical Path Computation,Area,"
-        "Static Power,Dynamic Power,Efficiency,%DynInstr,Merit\n";
+        "Static Power,Dynamic Power,Efficiency,%DynInstr,Saved Area,Merit\n";
 
       // Read the dynamic info file
       readDynInfo(dynamicInfoFile,&profileMap);
@@ -163,9 +163,11 @@ namespace {
           float merit = 0;
           for(int i = 0; i < FusedBBs.size();++i){
             if(fused_index[i]){
+              float saved_area = getSavedArea(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap);
               merit = getMerit(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap);
               max_index = merit > max_merit? i: max_index;
               max_merit = merit > max_merit? merit: max_merit;
+              evol[evol_index][i].push_back(saved_area);
               evol[evol_index][i].push_back(merit);
               fused[i]->push_back(getWeight(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap));
               fused[i]->push_back(merit);
@@ -264,7 +266,7 @@ namespace {
       }
 
       for(Function &F: M){
-        if(!exclude.count(F.getName().str())){
+        if(!exclude.count(F.getName().str()) and !F.isIntrinsic()){
           F.removeFnAttr(Attribute::NoInline);
           F.removeFnAttr(Attribute::OptimizeNone);
           F.addFnAttr(Attribute::AlwaysInline);
@@ -276,8 +278,10 @@ namespace {
             if(!isdigit(a))
               strip_name.push_back(a);
           int num = Names.count(strip_name);
-		  		if(!num)
+		  		if(!num){
 		  			Names[strip_name] = 1;
+            strip_name += 'r';
+          }
 		  		else {
             num = Names[strip_name];
 		  			Names[strip_name] += 1;

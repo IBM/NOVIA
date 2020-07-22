@@ -47,6 +47,9 @@ static map<unsigned,float> delay = {
   {Instruction::FMul,1},
   {Instruction::FDiv,3.76},
   {Instruction::FRem,4.04},
+  {Instruction::ShuffleVector,4.04},
+  {Instruction::ExtractElement,4.04},
+  {Instruction::InsertElement,0.92}
 };
 
 // Weight model taken from Region Seeker by Gioergios et al. in uM^2
@@ -93,6 +96,9 @@ static map<unsigned,int> area = {
   {Instruction::FMul,2275},
   {Instruction::FDiv,16114},
   {Instruction::FRem,17298},
+  {Instruction::ShuffleVector,16114},
+  {Instruction::ExtractElement,17298},
+  {Instruction::InsertElement,40}
 };
 
 // Energy model In nJ callibrated with Power8/9 measurements
@@ -139,6 +145,9 @@ static map<unsigned,float> energy = {
   {Instruction::FMul,50.4},
   {Instruction::FDiv,968.4},
   {Instruction::FRem,1069.2},
+  {Instruction::ShuffleVector,968.4},
+  {Instruction::ExtractElement,1069.2},
+  {Instruction::InsertElement,50}
 };
 
 // Static power in nwatts not callibrated
@@ -185,6 +194,9 @@ static map<unsigned,float> powersta = {
   {Instruction::FMul,0.4},
   {Instruction::FDiv,0.7},
   {Instruction::FRem,0.8},
+  {Instruction::ShuffleVector,0.7},
+  {Instruction::ExtractElement,0.8},
+  {Instruction::InsertElement,0.7}
 };
 
 

@@ -31,12 +31,26 @@ FusedBB::~FusedBB(){
 
 FusedBB::FusedBB(FusedBB* Copy){
   ValueToValueMapTy VMap;
-  BB = CloneBasicBlock(Copy->getBB(),VMap);
+  // There is a bug, if a parentless basicblock (without funciton) with allocas 
+  // is Cloned, the isStaticAlloca() check will fail, cause it will try to
+  // retrieve the parent of the basic block, which is empty and get the first
+  // basic block of a null operator
+  //BB = CloneBasicBlock(Copy->getBB(),VMap);
+  this->Context = Copy->Context;
+  
+  this->BB = BasicBlock::Create(*this->Context,"");  
+  this->BB->setName(Copy->getName());
+  for (const Instruction &I : *Copy->getBB()){
+    Instruction *NewInst = I.clone();
+    NewInst->setName(I.getName());
+    BB->getInstList().push_back(NewInst);
+    VMap[&I] = NewInst;
+  }
+  
   SmallVector<BasicBlock*,1> bbList;
   bbList.push_back(this->BB);
   remapInstructionsInBlocks(bbList,VMap);
   
-  this->Context = Copy->Context;
   mergedBBs = new set<BasicBlock*>(*Copy->mergedBBs);
 
   LiveOut = new map<Instruction*, Instruction* >;
@@ -552,8 +566,9 @@ void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* 
   (*fuseMap)[Imerg]->insert(Iorig);
 
   // Only for debug purposes
-  //MDNode *N = MDNode::get(Iorig->getContext(),NULL);
-  //Imerg->setMetadata("is.merged",N);
+  MDNode *N = MDNode::get(Iorig->getContext(),NULL);
+  Imerg->setMetadata("is.merged",N);
+  //Imerg->dump();
 
   return;
 }
@@ -666,6 +681,11 @@ void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* 
         Value *outGEPData = Builder.CreateStructGEP(outStruct,pos);
         Value *out = Builder.CreateLoad(LiveOut[arg]->getType(),outGEPData);
         LiveOut[arg]->replaceAllUsesWith(out);
+
+        // If the out value is the new livein of a merged bb we copy it's pos
+        if(liveInPos->count(LiveOut[arg])){
+          (*liveInPos)[out] = (*liveInPos)[LiveOut[arg]] ;
+        }
         //lastLoad = out;
       }
 
