@@ -167,9 +167,9 @@ namespace {
               merit = getMerit(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap);
               max_index = merit > max_merit? i: max_index;
               max_merit = merit > max_merit? merit: max_merit;
-              evol[evol_index][i].push_back(saved_area);
               evol[evol_index][i].push_back(merit);
               fused[i]->push_back(getWeight(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap));
+              fused[i]->push_back(saved_area);
               fused[i]->push_back(merit);
             }
           }
