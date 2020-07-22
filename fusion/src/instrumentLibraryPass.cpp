@@ -51,30 +51,33 @@ namespace {
       for(auto &F : M){
         if(!exclude.count(F.getName().str()))
           for(auto &BB : F){
-            vector<Value*> CallVals;
-            tableGV[&BB] = new GlobalVariable(M,Builder.getInt64Ty(),false,GlobalValue::ExternalLinkage,Constant::getNullValue(Builder.getInt64Ty()));
-            Builder.SetInsertPoint(BB.getTerminator());
-            Value *start = Builder.CreateCall(rdtsc);
-            cast<Instruction>(start)->moveBefore(BB.getFirstNonPHI());
-            Value *end = Builder.CreateCall(rdtsc);
-            for(auto &I : BB){
-              if(isa<CallInst>(&I) and cast<CallInst>(&I)->getCalledFunction() != rdtsc){
-                Value *scall = Builder.CreateCall(rdtsc);
-                cast<Instruction>(scall)->moveBefore(&I);
-                Value *ecall = Builder.CreateCall(rdtsc);
-                cast<Instruction>(ecall)->moveAfter(&I);
-                Value *elapsed = Builder.CreateSub(ecall,scall);
-                CallVals.push_back(elapsed);
+            if( BB.size() > 1 and !BB.isLandingPad()){
+              vector<Value*> CallVals;
+              tableGV[&BB] = new GlobalVariable(M,Builder.getInt64Ty(),false,GlobalValue::ExternalLinkage,Constant::getNullValue(Builder.getInt64Ty()));
+              Builder.SetInsertPoint(BB.getTerminator());
+              Value *start = Builder.CreateCall(rdtsc);
+              cast<Instruction>(start)->moveBefore(BB.getFirstNonPHI());
+              Value *end = Builder.CreateCall(rdtsc);
+              for(auto &I : BB){
+                if(isa<CallInst>(&I) and cast<CallInst>(&I)->getCalledFunction() != rdtsc){
+                  Value *scall = Builder.CreateCall(rdtsc);
+                  cast<Instruction>(scall)->moveBefore(&I);
+                  Value *ecall = Builder.CreateCall(rdtsc);
+                  cast<Instruction>(ecall)->moveAfter(&I);
+                  Value *elapsed = Builder.CreateSub(ecall,scall);
+                  CallVals.push_back(elapsed);
+                }
               }
-            }
-            Value *cycles = Builder.CreateSub(end,start);
-            for(auto V : CallVals){
-              cycles = Builder.CreateSub(cycles,V);
-            }
-            Value *accum = Builder.CreateLoad(Builder.getInt64Ty(),tableGV[&BB]);
-            Value *newaccum = Builder.CreateAdd(cycles,accum);
-            Builder.CreateStore(newaccum,tableGV[&BB]);
+              Value *cycles = Builder.CreateSub(end,start);
+              for(auto V : CallVals){
+                cycles = Builder.CreateSub(cycles,V);
+              }
+              Value *accum = Builder.CreateLoad(Builder.getInt64Ty(),tableGV[&BB]);
+              Value *newaccum = Builder.CreateAdd(cycles,accum);
+              Builder.CreateStore(newaccum,tableGV[&BB]);
+              
           }
+       }
       }
       // Open file and get FileDescriptor
       FunctionType *collectTy = FunctionType::get(Builder.getVoidTy(),false);

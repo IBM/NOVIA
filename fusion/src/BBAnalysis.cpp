@@ -136,8 +136,9 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
 			   SetVector<Value*> *LiveOut){
 	using ValueSet = SetVector<Value *>;
   ValueSet Allocas;
-	ArrayRef<BasicBlock*> BBs(&BB);
-	CodeExtractor CE = CodeExtractor(BBs);
+	ArrayRef<BasicBlock*> *BBs = new ArrayRef<BasicBlock*>(&BB);
+	CodeExtractor CE = CodeExtractor(*BBs);
+  delete BBs;
 
 	CE.findInputsOutputs((ValueSet&)*LiveIn,(ValueSet&)*LiveOut,Allocas);
   /* 

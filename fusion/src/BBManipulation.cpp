@@ -381,6 +381,7 @@ void annotateMerge(Instruction *I){
  */
 // TODO: Merge those ifs
 void separateBr(BasicBlock *BB){
+  // Deal with PHIs
   if (isa<PHINode>(BB->begin())){
     IRBuilder<> builder(BB->getContext());
     BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"phis"+BB->getName(),
@@ -410,6 +411,7 @@ void separateBr(BasicBlock *BB){
     while(isa<PHINode>(BB->begin()))
       BB->begin()->moveBefore(*newBB,newBB->begin());
   }
+  // Deal with Terminators
   Instruction *I = BB->getTerminator();
   if(isa<BranchInst>(I)){
     if(cast<BranchInst>(I)->isConditional()){
@@ -438,9 +440,11 @@ void separateBr(BasicBlock *BB){
     builder.CreateBr(newBB);
   }
   else if(dyn_cast<ReturnInst>(I) and cast<ReturnInst>(I)->getReturnValue()){
-    Instruction *Ipred = cast<Instruction>(cast<ReturnInst>(I)->getReturnValue());
-    MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
-    Ipred->setMetadata("is.liveout",temp);
+    if(isa<Instruction>(cast<ReturnInst>(I)->getReturnValue())){
+      Instruction *Ipred = cast<Instruction>(cast<ReturnInst>(I)->getReturnValue());
+      MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
+      Ipred->setMetadata("is.liveout",temp);
+    }
     IRBuilder<> builder(BB->getContext());
     BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
       BB->getParent());

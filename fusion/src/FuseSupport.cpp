@@ -44,6 +44,16 @@ float getMerit(vector<BasicBlock*> *bblist,vector<vector<float>*> *prebb,
 
 }
 
+float getSavedArea(vector<BasicBlock*> *bblist,vector<vector<float>*> *prebb,
+    vector<float> *fused, FusedBB *candidate,map<string,double> *profileMap){
+  float tarea = 0;
+  for(int i = 0; i < prebb->size(); ++i){
+    if(!candidate->isMergedBB((*bblist)[i])){
+      tarea += (*(*prebb)[i])[12];
+    }
+  }
+  return (*fused)[12] - tarea;
+}
 
 void readDynInfo(string filename, map<string,double> *profileMap){
   fstream file;
