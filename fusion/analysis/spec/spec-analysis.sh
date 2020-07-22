@@ -4,7 +4,7 @@
 
 PWD=$(pwd)
 SPEC_CPU=/home/dtrilla/spec/benchspec/CPU
-CANDIDATES=2
+CANDIDATES=10
 MERGE=y
 
 pushd $SPEC_CPU/../../
@@ -13,24 +13,43 @@ popd
 
 
 for dir in $(find $SPEC_CPU -mindepth 1 -maxdepth 1 -type d); do
-  BITCODE=$(find $dir -mindepth 3 -maxdepth 3 -name *.bc -not -path '*/\.*')
+  BNAME=$(echo $dir | cut -d '/' -f7 | cut -d . -f2)
+  echo $BNAME
+  BITCODE=$(find $dir -mindepth 3 -maxdepth 3 -name $BNAME.bc -not -path '*/\.*')
+  echo $BITCODE
   if [ ! -z "$BITCODE" ]; then
     SPECCMD=$(find $dir -name speccmds.cmd)
-    INPUT=$(specinvoke -n $SPECCMD | grep test | grep -v Invoked)
+    INPUT=$(specinvoke -n $SPECCMD | grep test | grep -v Invoked | head -n 1)
     i=0
     GLOBAL_INPUT=\"
-    for param in $INPUT; do
-      if [ $i -ne 0 ]; then
-        INPUT_PARAM=$(find $dir/data/test -name $param)
-        if [ -z $INPUT_PARAM ]; then
-          GLOBAL_INPUT+=" $param"
-        else
-          GLOBAL_INPUT+=" $INPUT_PARAM"
+    echo $BITCODE
+    if [ -z $SPECCMD ]; then
+      echo "Missing speccmd.cmd"
+    else
+      echo $INPUT
+      for param in $INPUT; do
+        if [ $i -ne 0 ]; then
+          INPUT_PARAM=$(find $dir -maxdepth 3 -name $(basename -- $param)| grep run | head -n 1)
+          if [ -z $INPUT_PARAM ]; then
+            GLOBAL_INPUT+=" $param"
+          else
+            GLOBAL_INPUT+=" $INPUT_PARAM"
+          fi
         fi
-      fi
-      let i=i+1
-    done
-    GLOBAL_INPUT+=\"
-    ../analyze.sh $BITCODE "$GLOBAL_INPUT" $CANDIDATES $MERGE
+        let i=i+1
+      done
+      GLOBAL_INPUT+=\"
+      echo " "
+      echo $GLOBAL_INPUT
+      echo " "
+      #if [[ "$BITCODE" == *"x264"* ]]; then
+        if [ ! -z $SPECCMD ]; then
+          echo " "
+          echo "../analyze.sh $BITCODE "$GLOBAL_INPUT" $CANDIDATES $MERGE"
+          echo " "
+          ../analyze.sh $BITCODE "$GLOBAL_INPUT" $CANDIDATES $MERGE
+        fi
+      #fi
+    fi
   fi
 done

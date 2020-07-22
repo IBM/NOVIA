@@ -16,7 +16,7 @@ $LLVM_BIN/opt -inline < $name_rn > $name_rn_inl
 $LLVM_BIN/opt -load $FUSE_LIB/libinstrumentlib.so --instrumentBBs -excl exclude.txt < $name_rn_inl > $name_ins
 $LLVM_BIN/clang++ $name_ins $FUSE_LIB/arch/x86/CMakeFiles/timer.dir/timer.c.o -lpython3.6m -o "$name_ins_bin"
 cd ../../../../mini-era
-../fuseacc/fusion/analysis/$name/$name_ins_bin $2 | grep "hist:" | cut -d ":" -f2  > ../fuseacc/fusion/analysis/$name/histogram.txt 
+../fuseacc/fusion/analysis/$name/$name_ins_bin $2 
 cd ../fuseacc/fusion/analysis/$name
 python ../normalize.py histogram.txt weights.txt bblist.txt $3
 
