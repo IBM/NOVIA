@@ -21,6 +21,8 @@
 using namespace llvm;
 using namespace std;
 
+static cl::opt<bool> force("fmerg",
+    cl::desc("Force all merges independently of benefit"),cl::Optional);
 static cl::opt<string> bbFileName("bbs",
     cl::desc("Specify file with BB names to merge"));
 static cl::opt<string> visualDir("graph_dir",
@@ -171,9 +173,13 @@ namespace {
               fused[i]->push_back(getWeight(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap));
               fused[i]->push_back(saved_area);
               fused[i]->push_back(merit);
+              if(force)
+                max_index = i;
             }
           }
+
           last_index = max_index;
+
             
           for(int i = 0; i < FusedBBs.size();++i){
             if(fused_index[i]){

@@ -17,7 +17,7 @@ Value *getSafePointer(PointerType *O, Module *M){
  * @return operands merge
  */
 bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B,
-                    map<Value*,Value*> *SubOp){
+                    map<Value*,Value*> *SubOp, set<Value*> *LiveInA, set<Value*> *LiveInB){
 	bool sameValue = false;
 	bool isLiveIn = false;
 	bool isInstMerg = false;
@@ -31,8 +31,7 @@ bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B,
   isConstant = isa<Constant>(opA) or isa<Constant>(opB);
   isSameType = opA->getType() == opB->getType();
 	// If operands come from oustide the BB, they are fusable LiveIns
-	isLiveIn = ((Instruction*)opA)->getParent() != A &&
-			((Instruction*)opB)->getParent() != B;
+	isLiveIn = LiveInA->count(opA) and LiveInB->count(opB);
 		// If operands come from mergeable Instructions
 	isInstMerg = areInstMergeable(*(Instruction*)opA,*(Instruction*)opB);
   if(SubOp->count(opB)){
@@ -175,16 +174,21 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
  * @return critical path delay
  */
 
-float dfsCrit(Instruction *I, BasicBlock *BB){
+float dfsCrit(Instruction *I, BasicBlock *BB,map<Instruction*,float> *visited){
   float cost = 0;
   if ( I->getParent() == BB ){
     for(User *U : I->users()){
-      if(!isa<PHINode>(U)){
-        float tmp = dfsCrit((Instruction*)U,BB);
-        if(tmp>cost)
-          cost = tmp;
+      float tmp;
+      if(visited->count((Instruction*)U)){
+        tmp = (*visited)[(Instruction*)U];
       }
+      else{
+        tmp = dfsCrit((Instruction*)U,BB,visited);
+      }
+      if(tmp>cost)
+        cost = tmp;
     }
+    (*visited)[I] = cost+getDelay(I);
     return cost + getDelay(I);
   }
   return 0;
@@ -212,10 +216,11 @@ pair<float,float> getCriticalPathCost(BasicBlock *BB){
   pair<float,float> cost = pair<int,int>(0,0); // Overhead, Computation
   float tpred = 0, tsucc = 0;
   BasicBlock *pred, *succ;
+  map<Instruction*,float> visited;
   // If we have a receive data BB preceeding, compute it's cirtical path
   if((pred = BB->getSinglePredecessor()) and pred->getName() == "loadBB"){
     for(auto &I: *pred){
-      float tmp = dfsCrit(&I,pred);
+      float tmp = dfsCrit(&I,pred,&visited);
       if(tmp>tpred)
         tpred = tmp;
     }
@@ -223,14 +228,18 @@ pair<float,float> getCriticalPathCost(BasicBlock *BB){
   // If we have a send data BB succeding, compute it's cirtical path
   if((succ = BB->getSingleSuccessor()) and succ->getName() == "storeBB"){
     for(auto &I: *BB){
-      float tmp = dfsCrit(&I,succ);
+      float tmp = dfsCrit(&I,succ,&visited);
       if(tmp>tsucc)
         tsucc = tmp;
     }
   }
   // For each instruction in the basic block, find it's critical path
+  /*for(auto &I: *BB)
+    I.dump();
+  errs() << "\n";*/
+
   for(auto &I: *BB){
-    float tmp = dfsCrit(&I,BB);
+    float tmp = dfsCrit(&I,BB,&visited);
     if(tmp>cost.second)
       cost.second = tmp;
   }

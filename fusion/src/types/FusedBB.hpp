@@ -28,7 +28,7 @@ class FusedBB{
     BasicBlock *BB;
     set<BasicBlock*> *mergedBBs; // What BB I merged
     map<Instruction*,Instruction*> *LiveOut; // What LiveOuts are mapped
-    map<Instruction*,Instruction*> LiveIn; // LiveIn mapping
+    //map<Instruction*,Instruction*> LiveIn; // LiveIn mapping
     map<Value*,BasicBlock*> *argsBB; // Selection value maping to BBs
     map<Value*,set<pair<Value*,BasicBlock*> >* > *linkOps;
     map<Instruction*,int> *storeDomain;
@@ -45,7 +45,7 @@ class FusedBB{
     map<Value*,map<BasicBlock*,int>* > *liveInPos;
     map<Value*,int> *liveOutPos;
     //set<Value*> LiveOut;
-    //set<Value*> LiveIn;
+    set<Value*> *LiveIn;
   public:
     // constructor
     FusedBB();
@@ -61,7 +61,7 @@ class FusedBB{
     // mergers
     void mergeBB(BasicBlock *BB);
     void mergeOp(Instruction*, Instruction*,map<Value*,Value*> *,
-        IRBuilder<>*,Value*);
+        IRBuilder<>*,Value*,set<Value*>*);
     // spliters
     void splitBB();
     // enablers
@@ -69,6 +69,8 @@ class FusedBB{
     bool insertCall(Function *, vector<BasicBlock*> *);
 
     // helpers
+    bool searchDfs(Instruction*,Instruction*);
+    bool checkNoLoop2(Instruction*,Instruction*,BasicBlock*);
     bool checkNoLoop(Instruction*,Instruction*,BasicBlock*);
     void secureMem(Value*,BasicBlock*);
     void KahnSort(); 

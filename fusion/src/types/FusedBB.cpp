@@ -24,6 +24,7 @@ FusedBB::~FusedBB(){
   for(auto E : *liveInPos)
     delete E.second;
   delete liveInPos;
+  delete LiveIn;
   delete liveOutPos;
   delete BB;
   return;
@@ -113,6 +114,10 @@ FusedBB::FusedBB(FusedBB* Copy){
     else
       (*liveInPos)[E.first] = new map<BasicBlock*,int> (*E.second);
 
+  LiveIn = new set<Value*>;
+  for(auto E: *Copy->LiveIn)
+    LiveIn->insert(E);
+
   liveOutPos = new map<Value*,int>;
   for(auto E : *Copy->liveOutPos)
     (*liveOutPos)[VMap[E.first]] = E.second;
@@ -131,6 +136,7 @@ void FusedBB::init(LLVMContext *Context){
   safeMemI = new map<Instruction*,unsigned>;
   selMap = new map<Instruction*,BasicBlock*>;
   liveInPos = new map<Value*,map<BasicBlock*,int>* >;
+  LiveIn = new set<Value*>;
   liveOutPos = new map<Value*,int>;
   this->Context = Context;
   return;
@@ -149,14 +155,14 @@ void FusedBB::addMergedBB(BasicBlock *BB){
 
 void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
     map<Value*,Value*> *SubOp, IRBuilder<> *Builder,
-    Value *SelVal){
+    Value *SelVal, set<Value*> *LiveInBB){
   map<int,int> match;
   set<int> used;
   for(int i = 0;i < Ifused->getNumOperands(); ++i){
     Value *Vfused = Ifused->getOperand(i);
     for(int j = 0; j < Iorig->getNumOperands() and !match.count(i); ++j){
       Value *Vorig = Iorig->getOperand(j);
-      if(areOpsMergeable(Vfused,Vorig,Ifused->getParent(),Iorig->getParent(),SubOp)
+      if(areOpsMergeable(Vfused,Vorig,Ifused->getParent(),Iorig->getParent(),SubOp,this->LiveIn,LiveInBB)
           and !used.count(j)){
         match[i] = j;
         used.insert(j);
@@ -242,8 +248,69 @@ void FusedBB::secureMem(Value *SelVal, BasicBlock *destBB){
  * @param Ib Instruction from BB B to merge
  * @param *C BasicBlock to merge
  */
+bool FusedBB::searchDfs(Instruction *Iref,Instruction* Isearch){
+  bool noloop = true;
+  if(Iref == Isearch)
+    return false;
+  else{
+    for(auto user = Isearch->user_begin(); user!= Isearch->user_end(); user++){
+      Instruction *Up = (Instruction*)*user;
+      if(Up->getParent() == Iref->getParent())
+        noloop &= searchDfs(Iref,Up);
+    }
+  }
+  return noloop;
+}
+bool FusedBB::checkNoLoop2(Instruction *Iref, Instruction *Isearch, BasicBlock *BB){
+  bool noloop = true;
+  for(auto user = Iref->user_begin(); user!= Iref->user_end() and noloop; user++){
+    Instruction *Up = (Instruction*)*user;
+    for(auto E : *fuseMap){
+      for(auto F : *E.second){
+        if(F == Up)
+          noloop &= searchDfs(Isearch,E.first);
+        if(!noloop)
+          break;
+      }
+      if(!noloop)
+        break;
+    }
+  }
+  /*
+  for(int i = 0; i < Iref->getNumOperands() and noloop; ++i){
+    if(isa<Instruction>(Iref->getOperand(i))){
+      Instruction *Op = cast<Instruction>(Iref->getOperand(i));
+      for(auto E : *fuseMap){
+        for(auto F : *E.second){
+          if(F == Op)
+            noloop &= searchDfs(Isearch,E.first);
+          if(!noloop)
+            break;
+        }
+        if(!noloop)
+          break;
+      }
+      
+    }
+  }*/
+  return noloop;
+}
+
+
+//static set<Instruction*> repeated;
+//static int dbgcount;
 bool FusedBB::checkNoLoop(Instruction *Iref, Instruction *Isearch, BasicBlock *BB){
   bool noloop = true;
+  /*if(repeated.count(Isearch)){
+    dbgcount += 1;
+    errs() << "Error";
+  }
+  else{
+    if(repeated.empty())
+      errs() << "Start\n";
+    repeated.insert(Isearch);
+    errs() << Isearch << " " << *Isearch << '\n';
+  }*/
   if(Iref == Isearch)
     return false;
   else{
@@ -257,10 +324,10 @@ bool FusedBB::checkNoLoop(Instruction *Iref, Instruction *Isearch, BasicBlock *B
         if(Up->getParent() == Isearch->getParent())
           noloop &= checkNoLoop(Iref,Up,BB);
       }
-      if(rawDeps->count(Isearch)){
-        for(auto I = (*rawDeps)[Isearch]->begin(); I != (*rawDeps)[Isearch]->end(); ++I)
-            noloop &= checkNoLoop(Iref,*I,BB);
-      }
+      //if(rawDeps->count(Isearch)){
+      //  for(auto I = (*rawDeps)[Isearch]->begin(); I != (*rawDeps)[Isearch]->end(); ++I)
+      //      noloop &= checkNoLoop(Iref,*I,BB);
+      //}
     }
 
   return noloop;
@@ -278,8 +345,10 @@ void FusedBB::mergeBB(BasicBlock *BB){
   map<Value*,Value*> SubOp;
 
   // Stats
-  SetVector<Value*> LiveInBB, LiveOutBB;
-  liveInOut(*BB,&LiveInBB,&LiveOutBB);
+  SetVector<Value*> SetVLiveInBB, LiveOutBB;
+  set<Value*> LiveInBB (SetVLiveInBB.begin(),SetVLiveInBB.end());
+  liveInOut(*BB,&SetVLiveInBB,&LiveOutBB);
+
 
   // Update Stats
   this->addMergedBB(BB);
@@ -287,12 +356,15 @@ void FusedBB::mergeBB(BasicBlock *BB){
   for(Instruction &Ib : *BB){
     if(!isa<IntrinsicInst>(Ib) and !isa<BranchInst>(Ib)){
       for(Instruction &Ia : *this->BB){
+        //dbgcount = 0;
         if(!merged.count(&Ia) and areInstMergeable(Ia,Ib)
             and checkNoLoop(&Ib,&Ia,BB) 
             and getStoreDomain(&Ia,this->BB) == getStoreDomain(&Ib, BB)){
+          //repeated.clear();
+          //errs() << "merged\n";
           merged.insert(&Ia);
           merged.insert(&Ib);
-          this->mergeOp(&Ia,&Ib,&SubOp,&builder,SelVal); 
+          this->mergeOp(&Ia,&Ib,&SubOp,&builder,SelVal,&LiveInBB); 
           this->annotateMerge(&Ib,&Ia,BB); 
           this->addSafety(&Ia);
           this->linkLiveOut(&Ib,&Ia,&LiveOutBB);
@@ -312,14 +384,28 @@ void FusedBB::mergeBB(BasicBlock *BB){
         SubOp[cast<Value>(&Ib)] = cast<Value>(newInstB);
       } 
     }
+    // TODO: This needs to be optimized
+    // We do not need to search all instruction to substitute the operands
+    // just the ones that have left out operands to substitute
+    // TODO TODO TODO
+    for(Instruction &Ic: *this->BB){
+      for(int j =0;j<Ic.getNumOperands(); ++j){
+        Value *Vc = Ic.getOperand(j);
+        if(SubOp.count(Vc) and find(LiveInBB.begin(),LiveInBB.end(),Vc) == LiveInBB.end() and find(LiveOutBB.begin(),LiveOutBB.end(),Vc) == LiveOutBB.end())
+          Ic.setOperand(j,SubOp[Vc]);
+      }
+    }
   }
-  for(Instruction &Ic: *this->BB){
+  /*for(Instruction &Ic: *this->BB){
     for(int j =0;j<Ic.getNumOperands(); ++j){
       Value *Vc = Ic.getOperand(j);
       if(SubOp.count(Vc) and find(LiveInBB.begin(),LiveInBB.end(),Vc) == LiveInBB.end() and find(LiveOutBB.begin(),LiveOutBB.end(),Vc) == LiveOutBB.end())
         Ic.setOperand(j,SubOp[Vc]);
     }
-  }
+  }*/
+  for(auto inV : LiveInBB)
+    this->LiveIn->insert(inV);
+
   this->updateStoreDomain(&SubOp);
   this->updateRawDeps(&SubOp);
   // TODO: check if this can be made more efficient
@@ -800,8 +886,9 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
     // Same for Live Outs
     //linkPositionalLiveInOut(&BB);
     
-    //for(auto &I : *BB)
-    //  I.dump();
+    /*for(auto &I : *BB)
+      I.dump();
+    errs() << '\n';*/
 
     int pos = 0;
     for(auto Vin: LiveIn){
