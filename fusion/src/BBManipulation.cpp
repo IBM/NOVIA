@@ -689,13 +689,13 @@ void linkArgs(Value *selI, BasicBlock *BB){
               Value *opA = Ia.getOperand(j);
               Value *opB = Ib.getOperand(j);
               // Check if operands are mergeable
-              if(areOpsMergeable(opA,opB,&A,&B,&SubOp)){
+              //if(areOpsMergeable(opA,opB,&A,&B,&SubOp)){
                 //TODO:If mergeable and LiveIn, we must preserve opB
                 // origin
                 if(opA!=opB)
                   linkOps(opA,opB);
 
-              }
+              //}
               //  Operands cannot be merged, add select inst in case
               //  they are the same type
               else if( opA->getType() == opB->getType()){
@@ -962,7 +962,7 @@ void linkArgs(Value *selI, BasicBlock *BB){
     verifyFunction(*f,&errs());
     verifyModule(*Mod,&errs());
 
-    f->dump();
+    //f->dump();
     //Mod->dump();
 
     // Output Result

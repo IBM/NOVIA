@@ -24,7 +24,8 @@ using namespace std;
 Value *getSafePointer(PointerType*, Module*);
 // Analysis functions
 bool areOpsMergeable(Value*,Value*,BasicBlock*,BasicBlock*,
-                    map<Value*,Value*>*);
+                    map<Value*,Value*>*,set<Value*>*,
+                    set<Value*>*);
 bool areInstMergeable(Instruction&,Instruction&);
 void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
 void memRAWDepAnalysis(BasicBlock*,map<Value*,Value*> *,LLVMContext &);
