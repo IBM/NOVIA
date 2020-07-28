@@ -415,9 +415,11 @@ void separateBr(BasicBlock *BB){
   Instruction *I = BB->getTerminator();
   if(isa<BranchInst>(I)){
     if(cast<BranchInst>(I)->isConditional()){
-      Instruction *Ipred = cast<Instruction>(I->getOperand(0));
-      MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
-      Ipred->setMetadata("is.liveout",temp);
+      if(isa<Instruction>(I->getOperand(0))){
+        Instruction *Ipred = cast<Instruction>(I->getOperand(0));
+        MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
+        Ipred->setMetadata("is.liveout",temp);
+      }
       IRBuilder<> builder(BB->getContext());
       BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
         BB->getParent());
@@ -428,9 +430,11 @@ void separateBr(BasicBlock *BB){
     }
   }
   else if(isa<SwitchInst>(I)){
-    Instruction *Ipred = cast<Instruction>(I->getOperand(0));
-    MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
-    Ipred->setMetadata("is.liveout",temp);
+    if(isa<Instruction>(I->getOperand(0))){
+      Instruction *Ipred = cast<Instruction>(I->getOperand(0));
+      MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
+      Ipred->setMetadata("is.liveout",temp);
+    }
     IRBuilder<> builder(BB->getContext());
     BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),
       BB->getParent());
@@ -441,9 +445,11 @@ void separateBr(BasicBlock *BB){
   }
   else if(dyn_cast<ReturnInst>(I) and cast<ReturnInst>(I)->getReturnValue()){
     if(isa<Instruction>(cast<ReturnInst>(I)->getReturnValue())){
-      Instruction *Ipred = cast<Instruction>(cast<ReturnInst>(I)->getReturnValue());
-      MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
-      Ipred->setMetadata("is.liveout",temp);
+      if(isa<Instruction>(cast<ReturnInst>(I)->getReturnValue())){
+        Instruction *Ipred = cast<Instruction>(cast<ReturnInst>(I)->getReturnValue());
+        MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
+        Ipred->setMetadata("is.liveout",temp);  
+      }
     }
     IRBuilder<> builder(BB->getContext());
     BasicBlock *newBB = BasicBlock::Create(BB->getContext(),"sep"+BB->getName(),

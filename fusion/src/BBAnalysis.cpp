@@ -135,24 +135,25 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
 			   SetVector<Value*> *LiveOut){
 	using ValueSet = SetVector<Value *>;
   ValueSet Allocas;
-	ArrayRef<BasicBlock*> *BBs = new ArrayRef<BasicBlock*>(&BB);
+	/*ArrayRef<BasicBlock*> *BBs = new ArrayRef<BasicBlock*>(&BB);
 	CodeExtractor CE = CodeExtractor(*BBs);
-  delete BBs;
-
 	CE.findInputsOutputs((ValueSet&)*LiveIn,(ValueSet&)*LiveOut,Allocas);
-  /* 
+  delete BBs;*/
+  
+  
   for(auto &I: BB){
     for(int i = 0; i < I.getNumOperands(); ++i){
       Value *V = I.getOperand(i);
-      if(isa<Instruction>(V) && cast<Instruction>(V)->getParent() != &BB)
+      if(isa<Instruction>(V) && cast<Instruction>(V)->getParent() != &BB or
+          isa<Argument>(V))
         LiveIn->insert(V);
     }
     for(auto U : I.users()){
       Instruction *UI = (Instruction*)U;
       if(UI->getParent() != &BB)
-        LiveOut->insert(cast<Value>(UI));
+        LiveOut->insert(cast<Value>(&I));
     }
-  }*/
+  }
   // If a variable is annotated as liveout, we add it to the list of LiveOuts
   // Developer can force out values this way.
   for(auto I=BB.begin(), E=BB.end(); I != E; ++I){
