@@ -21,6 +21,7 @@ name_o="${name}_rn_ins.o"
 name_ins_bin="${name}_rn_ins.bin"
 
 LIBS="-lpython3.6m -lm -lomp -fopenmp"
+INLINE_STEPS=0
 
 #set -x
 
@@ -28,7 +29,7 @@ mkdir -p $name
 cp $1 $name/.
 cd $name
 echo "Analyzing $name"
-echo -n "Renaming and Marking Inline: "
+echo -n "Renaming: "
 if [ ! -f $name_rn ]; then
   $LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so --renameBBs < $name_ext > "$name_rn"
   echo "done"
@@ -38,20 +39,35 @@ fi
 
 echo -n "Optimizing Memory: "
 if [ ! -f $name_rn_inl ]; then
-  $LLVM_BIN/opt -mem2reg < $name_rn > $name_rn_inl
+  $LLVM_BIN/opt -mem2reg < $name_rn > $name_rn_reg
   echo "done"
 else
   echo "reused"
 fi
-<< ''
-echo -n "Inlining: "
-if [ ! -f $name_rn_inl ]; then
-  $LLVM_BIN/opt -inline < $name_rn_reg > $name_rn_inl
-  echo "done"
+
+if [ $INLINE_STEPS == 0 ]; then
+  cp $name_rn_reg $name_rn_inl
 else
-  echo "reused"
+  echo -n "Inlining: "
+  if [ ! -f $name_rn_inl ]; then
+    tmp_in=tmp_in.bc
+    tmp_out=tmp_out.bc
+    for i in $(seq $INLINE_STEPS)
+    do
+      echo -n "Step $i "
+      if [ $i  == 1 ]; then
+        $LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so -markInline -inlStep $INLINE_STEPS < $name_rn_reg > $tmp_out
+      else
+        $LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so -markInline -inlStep $INLINE_STEPS < $tmp_in > $tmp_out
+      fi
+      $LLVM_BIN/opt -inline < $tmp_out > $tmp_in
+    done
+    cp $tmp_in $name_rn_inl
+    echo "done"
+  else
+    echo "reused"
+  fi
 fi
-''
 
 echo -n "Instrumenting: "
 if [ ! -f $name_ins ]; then

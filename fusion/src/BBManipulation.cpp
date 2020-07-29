@@ -459,6 +459,16 @@ void separateBr(BasicBlock *BB){
     builder.SetInsertPoint(BB);
     builder.CreateBr(newBB);
   }
+  // Remove Intrinsics
+  /*
+  vector<Instruction*> rmIntr;
+  for(auto &I : *BB)
+    if(isa<IntrinsicInst>(&I))
+      rmIntr.push_back(&I);
+  for(auto I : rmIntr)
+      I->eraseFromParent();
+  */
+
 }
 
 

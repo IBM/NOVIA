@@ -23,6 +23,8 @@ using namespace std;
 
 static cl::opt<bool> force("fmerg",
     cl::desc("Force all merges independently of benefit"),cl::Optional);
+static cl::opt<int> inlineSteps("inlStep",
+    cl::desc("Fraction of the number of functions to inline"),cl::Optional);
 static cl::opt<string> bbFileName("bbs",
     cl::desc("Specify file with BB names to merge"));
 static cl::opt<string> visualDir("graph_dir",
@@ -31,6 +33,7 @@ static cl::opt<string> dynamicInfoFile("dynInf",
     cl::desc("File with profiling information per BB"),cl::Optional);
 static cl::opt<string> excludeList("excl",
     cl::desc("File with the exclusion list for functions"),cl::Optional);
+
 
 namespace {
 
@@ -64,7 +67,8 @@ namespace {
         " of Merged Instructions,Num Inst,Num Loads,Num Stores,Num Muxs (S"
         "elects),Other Instructions,Sequential Time,Memory Footprint (bits)"
         ",Critical Path Communication,Critical Path Computation,Area,"
-        "Static Power,Dynamic Power,Efficiency,%DynInstr,Saved Area,Merit\n";
+        "Static Power,Dynamic Power,Efficiency,%DynInstr,Saved Area,%Saved Area"
+        ",Merit\n";
 
       // Read the dynamic info file
       readDynInfo(dynamicInfoFile,&profileMap);
@@ -166,12 +170,14 @@ namespace {
           for(int i = 0; i < FusedBBs.size();++i){
             if(fused_index[i]){
               float saved_area = getSavedArea(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap);
+              float relative_saved_area = getRelativeSavedArea(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap);
               merit = getMerit(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap);
-              max_index = merit > max_merit? i: max_index;
-              max_merit = merit > max_merit? merit: max_merit;
-              evol[evol_index][i].push_back(merit);
+              max_index = saved_area > max_merit? i: max_index;
+              max_merit = saved_area > max_merit? saved_area: max_merit;
+              evol[evol_index][i].push_back(saved_area);
               fused[i]->push_back(getWeight(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap));
               fused[i]->push_back(saved_area);
+              fused[i]->push_back(relative_saved_area);
               fused[i]->push_back(merit);
               if(force)
                 max_index = i;
@@ -183,7 +189,7 @@ namespace {
             
           for(int i = 0; i < FusedBBs.size();++i){
             if(fused_index[i]){
-              if( (*fused[i])[12] > area_threshold or i != max_index){
+              if( (*fused[i])[12] > area_threshold or i != max_index or (*fused[i])[fused[i]->size()-1] < 0){
                 delete FusedBBs[i];
                 deleted++;
               }  
@@ -247,19 +253,19 @@ namespace {
      
       for(auto E : vCandidates) 
         delete E.second;
+      
+      verifyModule(M,&errs());
       	
       return false;
 		}
 	};
 
-	struct renameBBs : public ModulePass {
-		static char ID;
+  struct markInline : public ModulePass {
+    static char ID;
 
-		map<string,unsigned> Names;
+    markInline() : ModulePass(ID) {}
 
-		renameBBs() : ModulePass(ID) {}
-
-		bool runOnModule(Module &M) override{
+    bool runOnModule(Module &M) override {
       // Get the exclusion list
       set<string> exclude;
       if(!excludeList.empty()){
@@ -270,13 +276,31 @@ namespace {
           exclude.insert(fname);
         exclfile.close();
       }
-
-      for(Function &F: M){
-        if(!exclude.count(F.getName().str()) and !F.isIntrinsic()){
+      
+      int counter = 0;
+      int max_inline_func = M.size()/inlineSteps;
+      for(Function &F: M)        
+        if(!exclude.count(F.getName().str()) and !F.isIntrinsic() and 
+            counter < max_inline_func){
           F.removeFnAttr(Attribute::NoInline);
           F.removeFnAttr(Attribute::OptimizeNone);
           F.addFnAttr(Attribute::AlwaysInline);
+          counter++;
         }
+
+      return true;
+    }
+  };
+
+	struct renameBBs : public ModulePass {
+		static char ID;
+
+		map<string,unsigned> Names;
+
+		renameBBs() : ModulePass(ID) {}
+
+		bool runOnModule(Module &M) override{
+      for(Function &F: M){
 		  	for(BasicBlock &BB: F){
           string name = BB.getName().str();
           string strip_name;
@@ -312,6 +336,9 @@ static RegisterPass<renameBBs> b("renameBBs", "Renames BBs with  unique names",
 char listBBs::ID = 2;
 static RegisterPass<listBBs> c("listBBs", "List the names of all BBs", false,
 							   false);
+char markInline::ID = 3;
+static RegisterPass<markInline> d("markInline", "Mark functions as always inline",
+    false,false);
 
 static RegisterStandardPasses A(
 	PassManagerBuilder::EP_EarlyAsPossible,
@@ -327,3 +354,9 @@ static RegisterStandardPasses C(
 	PassManagerBuilder::EP_EarlyAsPossible,
 	[](const PassManagerBuilder &Builder,
 	   legacy::PassManagerBase &PM) {PM.add(new listBBs()); });
+
+
+static RegisterStandardPasses D(
+	PassManagerBuilder::EP_EarlyAsPossible,
+	[](const PassManagerBuilder &Builder,
+	   legacy::PassManagerBase &PM) {PM.add(new markInline()); });

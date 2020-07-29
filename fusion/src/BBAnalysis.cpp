@@ -78,7 +78,11 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
   // Do not merge select instructions, we will deal with this in later 
   // optimization steps
   bool noselect = !isa<SelectInst>(Ia);
-	return opcode and loadty and storety and numops and noselect and samety;
+  bool samecall = true;
+  if(isa<CallInst>(Ia) and isa<CallInst>(Ib))
+    samecall = cast<CallInst>(Ia).getCaller() == cast<CallInst>(Ib).getCaller();
+
+	return opcode and loadty and storety and numops and noselect and samety and samecall;
 }
 
 /**

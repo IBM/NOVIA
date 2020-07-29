@@ -39,7 +39,7 @@ FusedBB::FusedBB(FusedBB* Copy){
   //BB = CloneBasicBlock(Copy->getBB(),VMap);
   this->Context = Copy->Context;
   
-  this->BB = BasicBlock::Create(*this->Context,"");  
+  this->BB = BasicBlock::Create(*Copy->Context,"");  
   this->BB->setName(Copy->getName());
   for (const Instruction &I : *Copy->getBB()){
     Instruction *NewInst = I.clone();
@@ -354,7 +354,7 @@ void FusedBB::mergeBB(BasicBlock *BB){
   this->addMergedBB(BB);
 
   for(Instruction &Ib : *BB){
-    if(!isa<IntrinsicInst>(Ib) and !isa<BranchInst>(Ib)){
+    if(!isa<BranchInst>(Ib)){
       for(Instruction &Ia : *this->BB){
         //dbgcount = 0;
         if(!merged.count(&Ia) and areInstMergeable(Ia,Ib)
@@ -1006,7 +1006,6 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
 
     // Check Consistency
     verifyFunction(*f,&errs());
-    verifyModule(*Mod,&errs());
 
     //f->dump();
     //Mod->dump();

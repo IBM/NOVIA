@@ -1,5 +1,8 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
+export LLVM_COMPILER_PATH=$DIR/llvm-project/build/bin
+export LLVM_COMPILER=clang
+
 export GRAPHVIZ_TOP=$DIR/graphviz/
 export GRAPHVIZ_ROOT=$DIR/graphviz/build/
 

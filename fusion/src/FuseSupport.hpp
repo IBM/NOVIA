@@ -18,4 +18,6 @@ float getMerit(vector<BasicBlock*>*,vector<vector<float>*>*,vector<float> *, Fus
     map<string,double>*);
 float getSavedArea(vector<BasicBlock*>*,vector<vector<float>*>*,vector<float> *, FusedBB*,
     map<string,double>*);
+float getRelativeSavedArea(vector<BasicBlock*>*,vector<vector<float>*>*,vector<float> *, FusedBB*,
+    map<string,double>*);
 void readDynInfo(string, map<string,double>*);
