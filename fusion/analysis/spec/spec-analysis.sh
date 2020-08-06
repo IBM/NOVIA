@@ -4,7 +4,7 @@
 
 PWD=$(pwd)
 SPEC_CPU=/home/dtrilla/spec/benchspec/CPU
-CANDIDATES=15
+CANDIDATES=20
 MERGE=y
 EXCLUDE="cactu"
 
@@ -17,12 +17,12 @@ for dir in $(find $SPEC_CPU -mindepth 1 -maxdepth 1 -type d); do
   BNAME=$(echo $dir | cut -d '/' -f7 | cut -d . -f2)
   echo $BNAME
   BITCODE=$(find $dir -mindepth 3 -maxdepth 3 -name $BNAME.bc -not -path '*/\.*')
-  if [ *"$EXCLUDE"* == "$BNAME" ]; then
+  if [ $BNAME == "cactuBSSN_s" ]; then
     BITCODE=''
   fi
   echo $BITCODE
   if [ ! -z "$BITCODE" ]; then
-    SPECCMD=$(find $dir -name speccmds.cmd)
+    SPECCMD=$(find $dir -name speccmds.cmd | head -n 1)
     INPUT=$(specinvoke -n $SPECCMD | grep test | grep -v Invoked | head -n 1)
     i=0
     GLOBAL_INPUT=\"

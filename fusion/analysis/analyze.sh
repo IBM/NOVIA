@@ -78,8 +78,10 @@ else
 fi
 
 echo -n "Linking Timers and Compiling: "
-if [ ! -f $name_ins_bin ]; then
+if [ ! -f $name_o ]; then
   $LLVM_BIN/llc -filetype=obj $name_ins 
+fi
+if [ ! -f $name_ins_bin ]; then
   $LLVM_BIN/clang++ -no-pie $name_o $FUSE_LIB/arch/x86/CMakeFiles/timer.dir/timer.c.o $LIBS -o "$name_ins_bin"
   echo "done"
 else

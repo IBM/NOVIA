@@ -12,12 +12,13 @@ def main():
     for line in fi:
         data = line.split()
         value = float(data[1])/total
-        list += [(data[0],value)]
+        list += [(data[0],value,data[2])]
 
     sorted_list = sorted(list, key=lambda tup: tup[1],reverse=True)
     for elem in sorted_list:
         fo.write(elem[0])
-        fo.write(" %.10f\n" % elem[1])
+        fo.write(" %.10f " % elem[1])
+        fo.write(" %d\n" % int(elem[2]))
     fi.close()
     fo.close()
 
