@@ -4,7 +4,7 @@
 
 PWD=$(pwd)
 SPEC_CPU=/home/dtrilla/spec/benchspec/CPU
-CANDIDATES=20
+CANDIDATES=25
 MERGE=y
 EXCLUDE="cactu"
 
@@ -17,7 +17,7 @@ for dir in $(find $SPEC_CPU -mindepth 1 -maxdepth 1 -type d); do
   BNAME=$(echo $dir | cut -d '/' -f7 | cut -d . -f2)
   echo $BNAME
   BITCODE=$(find $dir -mindepth 3 -maxdepth 3 -name $BNAME.bc -not -path '*/\.*')
-  if [ $BNAME == "cactuBSSN_s" ]; then
+  if [ $BNAME == "cactuBSSN_s" ]||[ $BNAME == "gcc_s" ]||[ $BNAME != "perlbench_s"  ]; then
     BITCODE=''
   fi
   echo $BITCODE
@@ -34,6 +34,13 @@ for dir in $(find $SPEC_CPU -mindepth 1 -maxdepth 1 -type d); do
       for param in $INPUT; do
         if [ $i -ne 0 ]; then
           INPUT_PARAM=$(find $dir -maxdepth 3 -name $(basename -- $param)| grep run | head -n 1)
+          if [ $BNAME == "perlbench_s" ]; then
+            if [ $param == "-I." ]; then
+              INPUT_PARAM="-I$dir"
+            elif [ $param == "-I./lib" ]; then
+              INPUT_PARAM="-I$dir/lib"
+            fi
+          fi
           if [ -z $INPUT_PARAM ]; then
             GLOBAL_INPUT+=" $param"
           else
