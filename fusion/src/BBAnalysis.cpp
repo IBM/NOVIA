@@ -81,8 +81,13 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
   bool samecall = true;
   if(isa<CallInst>(Ia) and isa<CallInst>(Ib))
     samecall = cast<CallInst>(Ia).getCaller() == cast<CallInst>(Ib).getCaller();
+  bool samegetelemptr = true;
+  if(isa<GetElementPtrInst>(Ia) and isa<GetElementPtrInst>(Ib) and samety and numops)
+    if(cast<PointerType>(Ia.getOperand(0)->getType())->getElementType()->isStructTy())
+    for(int i =0;i<Ia.getNumOperands();++i)
+      samegetelemptr &= Ia.getOperand(i) == Ib.getOperand(i);
 
-	return opcode and loadty and storety and numops and noselect and samety and samecall;
+	return opcode and loadty and storety and numops and noselect and samety and samecall and samegetelemptr;
 }
 
 /**
@@ -178,6 +183,28 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
  * @param *BB Reference Basic Block to compute the critical path in
  * @return critical path delay
  */
+/*
+float dfsCrit(Instruction *I, BasicBlock *BB,map<Instruction*,float> *visited){
+  vector<Instruction*> stackI;
+  vector<float> stackD;
+  float cost = getDelay(I);
+  for(auto *U : I->users()){
+    if(cast<Instruction>(U)->getParent() == BB){
+      float delay = getDelay(cast<Instruction>(U));
+      stackI->push_back(I);
+      stackD->push_back(getDelay(cast<Instruction>(U)));
+
+      I = cast<Instruction>(U);
+    }
+    else{
+      if(!visited->count(I) or visited->count(I) and (*visited)[I] < cost){
+        visited[I] = cost;
+      }
+    }
+  }
+  
+  return cost;
+}*/
 
 float dfsCrit(Instruction *I, BasicBlock *BB,map<Instruction*,float> *visited){
   float cost = 0;

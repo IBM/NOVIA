@@ -25,18 +25,7 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/ADT/SetVector.h"
 
-
 using namespace llvm;
 using namespace std;
 
-bool areInstMergeable(Instruction&, Instruction&);
-bool areOpsMergeable(Value*, Value*);
-FusedBB* mergeBBs(BasicBlock &A, FusedBB*);
-Function* createOffload(BasicBlock&, Module*);
-bool insertCall(Function *F, vector<BasicBlock*>*);
-void listBBInst(BasicBlock&);
-void linkOps(Value*,Value*);
-void linkArgs(Value*, BasicBlock*);
-void linkPositionalLiveInOut(BasicBlock*);
 void separateBr(BasicBlock *BB);
-

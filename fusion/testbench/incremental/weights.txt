@@ -1,0 +1,4 @@
+for.body 0.05
+for.body1r 0.05
+for.body2r 0.05
+for.body3r 0.05

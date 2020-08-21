@@ -10,6 +10,7 @@
 #include "../Maps.hpp"
 
 #include "llvm/Pass.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/IRBuilder.h"
@@ -33,6 +34,7 @@ class FusedBB{
     map<Value*,set<pair<Value*,BasicBlock*> >* > *linkOps;
     map<Instruction*,int> *storeDomain;
     map<Instruction*,set<Instruction*>* > *rawDeps;
+    //map<Instruction*,set<Instruction*>* > *warDeps;
     map<Instruction*,set<Instruction*>* > *fuseMap;
     map<Instruction*,BasicBlock*> *selMap;
 
@@ -63,14 +65,14 @@ class FusedBB{
     void mergeOp(Instruction*, Instruction*,map<Value*,Value*> *,
         IRBuilder<>*,Value*,set<Value*>*);
     // spliters
-    void splitBB();
+    void splitBB(vector<list<Instruction*> *> *);
     // enablers
     Function *createOffload(Module *);
     bool insertCall(Function *, vector<BasicBlock*> *);
 
     // helpers
-    bool searchDfs(Instruction*,Instruction*);
-    bool checkNoLoop2(Instruction*,Instruction*,BasicBlock*);
+    bool searchDfs(Instruction*,Instruction*,set<Instruction*>*);
+    bool checkNoLoop2(Instruction*,Instruction*,BasicBlock*,map<Value*,Value*>*);
     bool checkNoLoop(Instruction*,Instruction*,BasicBlock*);
     void secureMem(Value*,BasicBlock*);
     void KahnSort(); 
@@ -78,6 +80,9 @@ class FusedBB{
     void addSafety(Instruction*);
     void updateRawDeps(map<Value*,Value*>*);
     void updateStoreDomain(map<Value*,Value*>*);
+
+    bool rCycleDetector(Instruction *I, set<Instruction*> *, list<Instruction*> *,set<Instruction*>*,int);
+    void CycleDetector(Function*);
 
     // linkage functions
     void linkLiveOut(Instruction*,Instruction*,SetVector<Value*> *);
@@ -91,12 +96,15 @@ class FusedBB{
 
     // getter funcionts
     int size();
+    unsigned getNumMerges(Instruction*);
     unsigned getNumMerges();
     unsigned getMaxMerges();
+    float getAreaOverhead();
     string getName();
     unsigned getStoreDomain(Instruction*,BasicBlock*);
     BasicBlock* getBB();
     void getMetrics(vector<float>*,Module*);
+    void fillSubgraphsBBs(Instruction*,set<string>*);
   
     // Hardware
     //bool getVerilog(raw_fd_stream&);

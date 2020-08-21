@@ -17,7 +17,7 @@ for dir in $(find $SPEC_CPU -mindepth 1 -maxdepth 1 -type d); do
   BNAME=$(echo $dir | cut -d '/' -f7 | cut -d . -f2)
   echo $BNAME
   BITCODE=$(find $dir -mindepth 3 -maxdepth 3 -name $BNAME.bc -not -path '*/\.*')
-  if [ $BNAME == "cactuBSSN_s" ]||[ $BNAME == "gcc_s" ]||[ $BNAME != "perlbench_s"  ]; then
+  if [ $BNAME == "cactuBSSN_s" ]||[ $BNAME == "gcc_s" ]||[ $BNAME == "lbm_s" ]; then
     BITCODE=''
   fi
   echo $BITCODE

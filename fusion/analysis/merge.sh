@@ -11,6 +11,7 @@ name_ins="${name}_rn_ins.bc"
 name_ins_bin="${name}_rn_ins.bin"
 out="out.bc"
 
-$LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so -mergeBBList -bbs bblist.txt --dynInf weights.txt --graph_dir imgs < $name_rn_inl > "$out"
+#$LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so -mergeBBList -bbs bblist.txt --dynInf weights.txt --graph_dir imgs < $name_rn_inl > "$out"
+$LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so -mergeBBList -bbs bblist.txt --dynInf weights.txt < $name_rn_inl > "$out"
 ${LLVM_ROOT}/bin/llvm-dis out.bc
 #${LLVM_ROOT}/bin/clang++ -O0 -ggdb $LIBS out.bc

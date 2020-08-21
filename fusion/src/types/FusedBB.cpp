@@ -90,9 +90,12 @@ FusedBB::FusedBB(FusedBB* Copy){
   rawDeps = new map<Instruction*,set<Instruction*>* >;
   for(auto E : *Copy->rawDeps){
     set<Instruction*> *aux = new set<Instruction*>;
-    (*rawDeps)[cast<Instruction>(VMap[cast<Value>(E.first)])] = aux;
-    for(auto sE : *E.second)
-      aux->insert(cast<Instruction>(VMap[cast<Value>(sE)]));
+    if(VMap.count(cast<Value>(E.first))){
+      (*rawDeps)[cast<Instruction>(VMap[cast<Value>(E.first)])] = aux;
+      for(auto sE : *E.second)
+        if(VMap.count(cast<Value>(sE)))
+          aux->insert(cast<Instruction>(VMap[cast<Value>(sE)]));  
+    }
   }
 
   fuseMap = new map<Instruction*,set<Instruction*>* >;
@@ -162,10 +165,12 @@ void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
     Value *Vfused = Ifused->getOperand(i);
     for(int j = 0; j < Iorig->getNumOperands() and !match.count(i); ++j){
       Value *Vorig = Iorig->getOperand(j);
-      if(areOpsMergeable(Vfused,Vorig,Ifused->getParent(),Iorig->getParent(),SubOp,this->LiveIn,LiveInBB)
-          and !used.count(j)){
-        match[i] = j;
-        used.insert(j);
+      if(areOpsMergeable(Vfused,Vorig,Ifused->getParent(),Iorig->getParent(),
+            SubOp,this->LiveIn,LiveInBB) and !used.count(j)){
+        if(Ifused->isCommutative() or !Ifused->isCommutative() and i == j){
+          match[i] = j;
+          used.insert(j);        
+        }
       }
     }
   }
@@ -177,16 +182,18 @@ void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
       Value *Vorig = Iorig->getOperand(match[i]);
       if(!linkOps->count(Vfused))
         (*linkOps)[Vfused] = new set<pair<Value*,BasicBlock*> >;
-      (*linkOps)[Vfused]->insert(pair<Value*,BasicBlock*>(Vorig,Iorig->getParent())); 
+      (*linkOps)[Vfused]->insert(pair<Value*,BasicBlock*>(Vorig,
+            Iorig->getParent())); 
     } 
     else{
       for(int j = 0; j < Iorig->getNumOperands() and !SelI; ++j){
         if(!used.count(j)){
           Value *Vorig = Iorig->getOperand(j);
-          assert( Vfused->getType() == Vorig->getType() && " Types differ, wrong merge" );
+          assert( Vfused->getType() == Vorig->getType() &&
+              " Types differ, wrong merge" );
           SelI = Builder->CreateSelect(SelVal,Vorig,Vfused,"fuse.sel");
           (*selMap)[cast<Instruction>(SelI)] = Iorig->getParent();
-          Ifused->setOperand(j,SelI);
+          Ifused->setOperand(i,SelI);
           used.insert(j);
         }
       }
@@ -248,60 +255,76 @@ void FusedBB::secureMem(Value *SelVal, BasicBlock *destBB){
  * @param Ib Instruction from BB B to merge
  * @param *C BasicBlock to merge
  */
-bool FusedBB::searchDfs(Instruction *Iref,Instruction* Isearch){
+bool FusedBB::searchDfs(Instruction *Iref,Instruction* Isearch, 
+    set<Instruction*> *visited){
   bool noloop = true;
   if(Iref == Isearch)
     return false;
-  else{
-    for(auto user = Isearch->user_begin(); user!= Isearch->user_end(); user++){
+  else if(!visited->count(Isearch)){
+    for(auto user = Isearch->user_begin(); user!= Isearch->user_end() and noloop; user++){
       Instruction *Up = (Instruction*)*user;
       if(Up->getParent() == Iref->getParent())
-        noloop &= searchDfs(Iref,Up);
+        noloop &= searchDfs(Iref,Up,visited);
     }
+    if(rawDeps->count(Isearch)){
+      for(auto I = (*rawDeps)[Isearch]->begin(); I != (*rawDeps)[Isearch]->end() and noloop; ++I)
+        noloop &= searchDfs(Iref,*I,visited);
+
+    }
+    visited->insert(Isearch);
   }
   return noloop;
 }
-bool FusedBB::checkNoLoop2(Instruction *Iref, Instruction *Isearch, BasicBlock *BB){
+bool FusedBB::checkNoLoop2(Instruction *Iref, Instruction *Isearch, BasicBlock *BB,
+    map<Value*,Value*> *SubOp){
   bool noloop = true;
+  set<Instruction*> visited;
+  // Consumers
   for(auto user = Iref->user_begin(); user!= Iref->user_end() and noloop; user++){
-    Instruction *Up = (Instruction*)*user;
-    for(auto E : *fuseMap){
-      for(auto F : *E.second){
-        if(F == Up)
-          noloop &= searchDfs(Isearch,E.first);
-        if(!noloop)
-          break;
-      }
-      if(!noloop)
-        break;
+    Value *Up = (Value*)*user;
+    if(SubOp->count(Up)){
+      visited.clear();
+      noloop &= searchDfs(Isearch,(Instruction*)(*SubOp)[Up],&visited);
     }
   }
-  /*
-  for(int i = 0; i < Iref->getNumOperands() and noloop; ++i){
-    if(isa<Instruction>(Iref->getOperand(i))){
-      Instruction *Op = cast<Instruction>(Iref->getOperand(i));
-      for(auto E : *fuseMap){
-        for(auto F : *E.second){
-          if(F == Op)
-            noloop &= searchDfs(Isearch,E.first);
-          if(!noloop)
-            break;
-        }
-        if(!noloop)
-          break;
-      }
-      
+  // Producers
+  for(int i = 0; i < Iref->getNumOperands() and noloop ; ++i){
+    if(SubOp->count(Iref->getOperand(i))){
+      visited.clear();
+      noloop &= searchDfs((Instruction*)(*SubOp)[Iref->getOperand(i)],Isearch,
+          &visited);
     }
-  }*/
+  }
+  // Memory Consumers
+  if(rawDeps->count(Iref)){
+    for(auto I = (*rawDeps)[Iref]->begin(); I != (*rawDeps)[Iref]->end() and noloop; ++I)
+      if(SubOp->count((Value*)&*I)){
+        visited.clear();
+        noloop &= searchDfs(Isearch,(Instruction*)(*SubOp)[(Value*)&*I],
+            &visited);
+        
+      }
+  }
+  // Memory Producers
+  if(noloop)
+    for(auto Elem : (*rawDeps))
+      for(auto Ild : *Elem.second)
+        if(Ild == Iref)
+          if(SubOp->count((Value*)Elem.first)){
+            visited.clear();
+            noloop &= searchDfs((Instruction*)(*SubOp)[(Value*)Elem.first],
+                Isearch,&visited);
+          }
+  
   return noloop;
 }
 
 
-//static set<Instruction*> repeated;
-//static int dbgcount;
+static set<Instruction*> repeated;
+static int dbgcount;
 bool FusedBB::checkNoLoop(Instruction *Iref, Instruction *Isearch, BasicBlock *BB){
   bool noloop = true;
-  /*if(repeated.count(Isearch)){
+  if(repeated.count(Isearch)){
     dbgcount += 1;
     errs() << "Error";
   }
@@ -310,7 +333,7 @@ bool FusedBB::checkNoLoop(Instruction *Iref, Instruction *Isearch, BasicBlock *B
       errs() << "Start\n";
     repeated.insert(Isearch);
     errs() << Isearch << " " << *Isearch << '\n';
-  }*/
+  }
   if(Iref == Isearch)
     return false;
   else{
@@ -324,10 +347,10 @@ bool FusedBB::checkNoLoop(Instruction *Iref, Instruction *Isearch, BasicBlock *B
         if(Up->getParent() == Isearch->getParent())
           noloop &= checkNoLoop(Iref,Up,BB);
       }
-      //if(rawDeps->count(Isearch)){
-      //  for(auto I = (*rawDeps)[Isearch]->begin(); I != (*rawDeps)[Isearch]->end(); ++I)
-      //      noloop &= checkNoLoop(Iref,*I,BB);
-      //}
+      if(rawDeps->count(Isearch)){
+        for(auto I = (*rawDeps)[Isearch]->begin(); I != (*rawDeps)[Isearch]->end(); ++I)
+            noloop &= checkNoLoop(Iref,*I,BB);
+      }
     }
 
   return noloop;
@@ -346,24 +369,27 @@ void FusedBB::mergeBB(BasicBlock *BB){
 
   // Stats
   SetVector<Value*> SetVLiveInBB, LiveOutBB;
-  set<Value*> LiveInBB (SetVLiveInBB.begin(),SetVLiveInBB.end());
   liveInOut(*BB,&SetVLiveInBB,&LiveOutBB);
+  set<Value*> LiveInBB (SetVLiveInBB.begin(),SetVLiveInBB.end());
 
 
   // Update Stats
   this->addMergedBB(BB);
 
   for(Instruction &Ib : *BB){
+    bool bmerged = false;
     if(!isa<BranchInst>(Ib)){
       for(Instruction &Ia : *this->BB){
         //dbgcount = 0;
         if(!merged.count(&Ia) and areInstMergeable(Ia,Ib)
-            and checkNoLoop(&Ib,&Ia,BB) 
-            and getStoreDomain(&Ia,this->BB) == getStoreDomain(&Ib, BB)){
+            and checkNoLoop2(&Ib,&Ia,BB,&SubOp)){ 
+            //and getStoreDomain(&Ia,this->BB) == getStoreDomain(&Ib, BB)){
           //repeated.clear();
           //errs() << "merged\n";
           merged.insert(&Ia);
-          merged.insert(&Ib);
+          bmerged = true;
+          //this->CycleDetector(BB->getParent());
+          //merged.insert(&Ib);
           this->mergeOp(&Ia,&Ib,&SubOp,&builder,SelVal,&LiveInBB); 
           this->annotateMerge(&Ib,&Ia,BB); 
           this->addSafety(&Ia);
@@ -372,8 +398,9 @@ void FusedBB::mergeBB(BasicBlock *BB){
           break;
         }
       }
-      if(!merged.count(&Ib)){
+      if(!bmerged){
         Instruction *newInstB = Ib.clone();
+        newInstB->setName(Ib.getName());
         merged.insert(newInstB);
         if(!fuseMap->count(newInstB))
           (*fuseMap)[newInstB] = new set<Instruction*>;
@@ -387,14 +414,40 @@ void FusedBB::mergeBB(BasicBlock *BB){
     // TODO: This needs to be optimized
     // We do not need to search all instruction to substitute the operands
     // just the ones that have left out operands to substitute
-    // TODO TODO TODO
+    // TODO: Apply exceptions to livein liveout that are from created select
+    // instructions!!!!!
     for(Instruction &Ic: *this->BB){
-      for(int j =0;j<Ic.getNumOperands(); ++j){
-        Value *Vc = Ic.getOperand(j);
-        if(SubOp.count(Vc) and find(LiveInBB.begin(),LiveInBB.end(),Vc) == LiveInBB.end() and find(LiveOutBB.begin(),LiveOutBB.end(),Vc) == LiveOutBB.end())
-          Ic.setOperand(j,SubOp[Vc]);
-      }
+        for(int j =0;j<Ic.getNumOperands(); ++j){
+          Value *Vc = Ic.getOperand(j);
+          if(SubOp.count(Vc) and find(LiveInBB.begin(),LiveInBB.end(),Vc) == LiveInBB.end()
+            and find(this->LiveIn->begin(),this->LiveIn->end(),Vc) == this->LiveIn->end()
+            and (find(LiveOutBB.begin(),LiveOutBB.end(),Vc) == LiveOutBB.end() or merged.count(&Ic)) ){
+            Ic.setOperand(j,SubOp[Vc]);
+          }
+        }
     }
+      
+    bool jiji = false;
+          if(jiji){
+            FunctionType *funcType = FunctionType::get(builder.getVoidTy(),false);
+            Function *f = Function::Create(funcType,
+                Function::ExternalLinkage,"offload_func",BB->getModule());
+            this->BB->insertInto(f);
+			      Instruction *V = builder.CreateCall(f);
+            V->moveBefore(BB->getTerminator());
+            DominatorTree DT = DominatorTree(*f);
+            this->KahnSort();
+            verifyFunction(*f);
+            for(auto &I: *this->BB){
+              for(auto *U : I.users()){
+                if(DT.dominates((Instruction*)U,&I)){
+                  errs() << "Alert!\n";
+                }
+              }
+            }
+          }
+          
+    this->updateRawDeps(&SubOp);
   }
   /*for(Instruction &Ic: *this->BB){
     for(int j =0;j<Ic.getNumOperands(); ++j){
@@ -467,6 +520,12 @@ void FusedBB::memRAWDepAnalysis(BasicBlock *BB){
       }
     }
   }
+  /*for(auto elem : (*rawDeps))
+    for(auto Ild : elem.second){
+      if(!warDeps->count(Ild))
+        warDeps[Ild] = new set<Instruction*>;
+      warDeps[Ild]->insert(elem.first);
+    }*/
 }
 
 void FusedBB::dropSafety(Instruction *I){
@@ -503,10 +562,10 @@ void FusedBB::KahnSort(){
         }
       }
     }
-    /*if(rawDeps->count(&I)){
+    if(rawDeps->count(&I)){
       for(auto rD : *(*rawDeps)[&I])
         EdgeList[rD].insert(&I);
-    }*/
+    }
     if(!EdgeList.count(&I))
       S.push_back(&I);
   }
@@ -524,18 +583,18 @@ void FusedBB::KahnSort(){
           S.push_back(cast<Instruction>(IU));
       }
     }
-    /*if(rawDeps->count(A)){
+    if(rawDeps->count(A)){
       for(auto I = (*rawDeps)[A]->begin(); I != (*rawDeps)[A]->end(); ++I){
         EdgeList[*I].erase(A);
         if(EdgeList[*I].empty())
           S.push_back(*I);
       }
-    }*/
+    }
   }
 
   for(auto I = next(L.begin()); I != L.end(); ++I)
     (*I)->moveAfter(*prev(I));
-} 
+}
 
 
 
@@ -545,15 +604,20 @@ void FusedBB::KahnSort(){
 void FusedBB::updateRawDeps(map<Value*,Value*> *SubOp){
   set<Value*> delete_list;
   for(auto rD : *rawDeps){
+    Value *St = NULL;
     if(SubOp->count(rD.first)){
-      if(!rawDeps->count(cast<Instruction>((*SubOp)[rD.first])))
-        (*rawDeps)[cast<Instruction>((*SubOp)[rD.first])] = new set<Instruction*>;
-      for(auto ld : *rD.second){
-        if(SubOp->count(cast<Value>(ld))){
-          (*rawDeps)[cast<Instruction>((*SubOp)[rD.first])]->insert(cast<Instruction>((*SubOp)[ld]));
-        }
+      St = (*SubOp)[rD.first];
+      if(!rawDeps->count(cast<Instruction>(St)))
+        (*rawDeps)[cast<Instruction>(St)] = new set<Instruction*>;
+      //delete_list.insert(rD.first);
+    }
+    else
+      St = rD.first;
+    for(auto ld : *rD.second){
+      if(SubOp->count(cast<Value>(ld))){
+        (*rawDeps)[cast<Instruction>(St)]->insert(cast<Instruction>((*SubOp)[ld]));
+        //(*rawDeps)[cast<Instruction>(St)]->erase(ld);
       }
-      delete_list.insert(rD.first);
     }
   }
   for(auto rD : delete_list){
@@ -588,6 +652,22 @@ unsigned FusedBB::getStoreDomain(Instruction *I, BasicBlock *BB){
   return domain;
 }
 
+float FusedBB::getAreaOverhead(){
+  float areaOverhead = 0;
+  for(auto &I : *this->BB){
+    if(isa<SelectInst>(I))
+      if(I.getOperand(0)->getName() == "fuse.sel.arg") 
+        areaOverhead += getArea(&I); 
+  }
+  return areaOverhead;
+}
+
+unsigned FusedBB::getNumMerges(Instruction *I){
+  unsigned merges = 0;
+  if(countMerges->count(I))
+    merges = (*countMerges)[I];
+  return merges;
+}
 
 unsigned FusedBB::getNumMerges(){
   return mergedBBs->size();
@@ -1058,4 +1138,108 @@ bool FusedBB::isMergedI(Instruction *I){
 
 int FusedBB::size(){
   return mergedBBs->size();
+}
+
+
+void traverseSubgraph(Instruction *I, set<Instruction*> *visited,
+    list<Instruction*> *list){
+
+  if(!(isa<StoreInst>(I) or isa<LoadInst>(I) or visited->count(I))){
+    visited->insert(I);
+    list->push_back(I);
+    for(auto &Op : I->operands()){
+      if(isa<Instruction>(Op) and cast<Instruction>(Op)->getParent() == 
+          I->getParent())
+        traverseSubgraph(cast<Instruction>(Op),visited,list);
+    }
+    for(auto Us : I->users()){
+      if(isa<Instruction>(Us) and cast<Instruction>(Us)->getParent() ==
+          I->getParent())
+        traverseSubgraph(cast<Instruction>(Us),visited,list);
+    }
+  }
+
+  return;
+}
+
+void FusedBB::splitBB(vector<list<Instruction*> *> *subgraphs){
+  set<Instruction*> visited;
+
+  for(auto &I : *this->BB){
+    if(!visited.count(&I)){
+      subgraphs->push_back(new list<Instruction*>);
+      traverseSubgraph(&I,&visited,(*subgraphs)[subgraphs->size()-1]);
+      if((*subgraphs)[subgraphs->size()-1]->empty()){
+        delete (*subgraphs)[subgraphs->size()-1];
+        subgraphs->pop_back();
+      }
+      else{
+        /*for(auto I = (*subgraphs)[subgraphs->size()-1]->begin();
+            I != (*subgraphs)[subgraphs->size()-1]->end();++I){
+          bool nouse = true;
+          for(auto U : (*I)->users())
+            nouse &= isa<SelectInst>(*I) and find((*subgraphs)[subgraphs->size()-1]->begin(),(*subgraphs)[subgraphs->size()-1]->end(),(Instruction*)U) != (*subgraphs)[subgraphs->size()-1]->end();
+          if(nouse)
+            (*subgraphs)[subgraphs->size()-1]->erase(I--);
+
+        }*/
+      }
+    }
+  }
+
+  return;
+}
+
+
+
+bool FusedBB::rCycleDetector(Instruction *I, set<Instruction*> *visited,
+    list<Instruction*> *streami, set<Instruction*> *processed, int level){
+  bool loopdet = false;
+  errs() << level << "\n";
+  if(visited->count(I)){
+    streami->push_front(I);
+    return true;
+  }
+  else{
+    visited->insert(I);
+    processed->insert(I);
+    for(auto Us : I->users()){
+      if(cast<Instruction>(Us)->getParent() == I->getParent())
+        loopdet = rCycleDetector(cast<Instruction>(Us),visited,streami,processed,level+1);
+      if(loopdet){
+        streami->push_front(I);
+        break;
+      }
+    }
+    if(!loopdet){
+      visited->erase(I);  
+    }
+    return loopdet;
+  }
+
+}
+
+void FusedBB::CycleDetector(Function *F){
+  set<Instruction*> processed;
+  set<Instruction*> visited;
+  list<Instruction*> streami;
+  for(auto &I : *this->BB){
+    visited.clear();
+    if(!processed.count(&I))
+      if(rCycleDetector(&I,&visited,&streami,&processed,0)){
+        this->BB->insertInto(F);
+        for(auto elem : streami)
+          elem->dump();
+        break;
+      }
+  }
+}
+    
+void FusedBB::fillSubgraphsBBs(Instruction *I,set<string>*subset){
+  if(fuseMap->count(I))
+    for(auto *Iorig : (*(*fuseMap)[I])){
+      subset->insert(Iorig->getParent()->getName().str());
+    }
+  return;
+
 }
