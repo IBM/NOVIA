@@ -17,6 +17,10 @@ pair<float,float> getSubgraphMetrics(vector<BasicBlock*> *bblist, vector<vector<
     set<Instruction*> subset;
     map<Instruction*,float> visited;
     data->push_back(new vector<float>);
+
+    float tseq = candidate->getTseqSubgraph(v,iterMap);
+    tseq_sub->push_back(tseq);
+
     for(auto *I : *v)
       subset.insert(I);
 
@@ -39,6 +43,37 @@ pair<float,float> getSubgraphMetrics(vector<BasicBlock*> *bblist, vector<vector<
     count++;
   }
   return pair<float,float>(acum_sub_area,acum_orig_area);
+}
+
+float getTseq(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,
+    vector<float> *fused, FusedBB *candidate, map<string,double> *profileMap,
+    map<string,long> *iterMap, set<string> *subset){
+  float total_tseq = 0;
+  float merged_iterations = 0;
+  float merged_weight = 0;
+  float merged_tseq = 0;
+  float unmerged_tseq =0;
+  float unmerged_weight = 0;
+  float total_weight = 0;
+  for(int i =0; i<prebb->size(); ++i){
+    if(subset->count((*bblist)[i]->getName().str())){
+      long iterations = (*iterMap)[(*bblist)[i]->getName().str()];
+      float weight = (*profileMap)[(*bblist)[i]->getName().str()];
+      if(candidate->isMergedBB((*bblist)[i])){
+        merged_iterations += iterations;
+        merged_weight += weight;
+        merged_tseq += (*(*prebb)[i])[8] * iterations;
+      }
+      else{
+        unmerged_tseq += (*(*prebb)[i])[8] * iterations;
+        unmerged_weight += weight;
+      }
+      total_tseq += (*(*prebb)[i])[8] * iterations;
+      total_weight += (*profileMap)[(*bblist)[i]->getName().str()];  
+    }
+  }
+  return merged_tseq;
+  
 }
 
 float getSpeedUp(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,

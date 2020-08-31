@@ -117,6 +117,8 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
           }
           else{
             name = string(I.getOperand(i)->getName());
+            if(name == "")
+              name = "inVal";
             if( name.find("fuse.sel.arg") == string::npos){
               if(names.count(name)){
                 names[name]++;

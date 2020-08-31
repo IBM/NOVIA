@@ -35,6 +35,8 @@ def main(argv):
         f.close()
         bbn += 1
 
+    print(tseq)
+    print(iters)
     fmerg = open("pmoxxdlx_wk/stats.csv","r")
     parses = False
     parsel = False
@@ -62,6 +64,7 @@ def main(argv):
         acum_weights = [0]*8
         acum_cp = [0]*8
         mtseq = spd[1][0]
+        print(spd,i)
         cp = spd[i][1]
         for j in range(len(spl[i])):
             bbn = int(spl[i][j][-1])

@@ -105,6 +105,8 @@ class FusedBB{
     BasicBlock* getBB();
     void getMetrics(vector<float>*,Module*);
     void fillSubgraphsBBs(Instruction*,set<string>*);
+    float getTseqSubgraph(list<Instruction*> *, map<string,long> *);
+    float getTseq();
   
     // Hardware
     //bool getVerilog(raw_fd_stream&);

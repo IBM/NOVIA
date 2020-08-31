@@ -12,6 +12,9 @@ using namespace llvm;
 using namespace std;
 
 
+float getTseq(vector<BasicBlock*>*, vector<vector<float>*>*,
+    vector<float> *, FusedBB *, map<string,double> *,
+    map<string,long> *, set<string> *);
 pair<float,float> getSubgraphMetrics(vector<BasicBlock*> *bblist, vector<vector<float>*> *,
     vector<float> *, FusedBB *, map<string,double> *, map<string,long> *,
     vector<list<Instruction*>*> *,vector<vector<float>*>*, vector<float>*);

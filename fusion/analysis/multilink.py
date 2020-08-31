@@ -28,7 +28,7 @@ def main(argv):
     for dir in argv:
         names += [dir.split('/')[-1]]
         bitcode_dirs += [pwd+dir+'/']
-        bitcodes += [bitcode_dirs[-1]+names[-1]+'_rn_inl.bc']
+        bitcodes += [bitcode_dirs[-1]+names[-1]+'_rn.bc']
         bitcode_rfs += [mdir+names[-1]+'_rf.bc']
         bitcode_exts += [mdir+names[-1]+'_ext.bc']
 

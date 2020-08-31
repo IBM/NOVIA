@@ -324,6 +324,9 @@ namespace {
           vCandidates.erase(vCandidates.begin()+elem-counter);
           counter++;
         }
+        for(auto &elem : vCandidates)
+          errs() << elem.second->getName();
+
 
         std::sort(vCandidates.begin(),vCandidates.end(),compareFused);
         stats << "Subgraphs,Area Savings,Speedup,BBs,Size,Tseq,CritPath,Weight\n";
@@ -343,15 +346,16 @@ namespace {
           vector<float> tseq_sub;
           tmp_areas = getSubgraphMetrics(&bbList,&prebb,NULL,vCandidates[spl].second,
               &profileMap,&iterMap,&subgraphs,&data,&tseq_sub);
-          if(0)
+          if(1)
             drawBBGraph(vCandidates[spl].second,(char*)(vCandidates[spl]
                 .second->getName()).c_str(),visualDir,
                 &subgraphs);
           errs() << vCandidates[spl].second->getName() << "\n";
           
           for(int i=0;i<subgraphs.size();++i){
+            if(subgraphs[i]->size() > 0){
             set<string> subset;
-            vector<float> tseq_sub;
+            //vector<float> tseq_sub;
             BasicBlock *BBtmp = BasicBlock::Create(M.getContext(),"");  
             ValueToValueMapTy VMap;
             vector<float> vs;
@@ -374,18 +378,18 @@ namespace {
               errs() << elem << " ";
             errs() << "\n";
             vector<float> orig_data;
-            vCandidates[spl].second->getMetrics(&orig_data,&M);
-            float orig_tseq = orig_data[8]; 
-            float orig_cp = orig_data[11];
-            float orig_weight = getWeight(&bbList,&prebb,&orig_data,vCandidates[spl].second,&profileMap,&iterMap);
-            float red_tseq = orig_tseq/vs[8];
-            float new_weight = orig_weight/red_tseq;
             FusedBB *tmp = vCandidates[spl].second;
-            float iterations = 0;
-            
             for(auto *I: *(subgraphs[i])){
               tmp->fillSubgraphsBBs(I,&subset);
             }
+            vCandidates[spl].second->getMetrics(&orig_data,&M);
+            float orig_tseq = getTseq(&bbList,&prebb,NULL,vCandidates[spl].second,&profileMap,&iterMap,&subset);
+            float orig_cp = orig_data[11];
+            float orig_weight = getWeight(&bbList,&prebb,&orig_data,vCandidates[spl].second,&profileMap,&iterMap);
+            float red_tseq = orig_tseq/tseq_sub[i];
+            float new_weight = orig_weight/red_tseq;
+            float iterations = 0;
+            
             for(auto name: subset){
               iterations += iterMap[name];
             }
@@ -411,6 +415,7 @@ namespace {
 
             delete fBB;
             delete BBtmp;
+          }
           }
             int x = 0;
             for(auto elem : data){

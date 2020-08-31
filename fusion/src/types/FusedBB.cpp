@@ -1144,7 +1144,7 @@ int FusedBB::size(){
 void traverseSubgraph(Instruction *I, set<Instruction*> *visited,
     list<Instruction*> *list){
 
-  if(!(isa<StoreInst>(I) or isa<LoadInst>(I) or visited->count(I))){
+  if(!(isa<StoreInst>(I) or isa<LoadInst>(I) or isa<BranchInst>(I) or visited->count(I))){
     visited->insert(I);
     list->push_back(I);
     for(auto &Op : I->operands()){
@@ -1174,21 +1174,42 @@ void FusedBB::splitBB(vector<list<Instruction*> *> *subgraphs){
         subgraphs->pop_back();
       }
       else{
-        /*for(auto I = (*subgraphs)[subgraphs->size()-1]->begin();
-            I != (*subgraphs)[subgraphs->size()-1]->end();++I){
-          bool nouse = true;
-          for(auto U : (*I)->users())
-            nouse &= isa<SelectInst>(*I) and find((*subgraphs)[subgraphs->size()-1]->begin(),(*subgraphs)[subgraphs->size()-1]->end(),(Instruction*)U) != (*subgraphs)[subgraphs->size()-1]->end();
-          if(nouse)
-            (*subgraphs)[subgraphs->size()-1]->erase(I--);
-
-        }*/
+        bool removed = true;
+        while(removed){
+          removed = false;
+          for(auto I = (*subgraphs)[subgraphs->size()-1]->begin();
+              I != (*subgraphs)[subgraphs->size()-1]->end();++I){
+            if(isa<SelectInst>(*I)){
+              bool nouse = true;
+              for(int i=0;i<(*I)->getNumOperands();++i)
+                for(auto O = (*subgraphs)[subgraphs->size()-1]->begin();
+                    O != (*subgraphs)[subgraphs->size()-1]->end();++O)
+                    nouse &=  (*O) != (*I)->getOperand(i);
+              if(nouse){
+                (*subgraphs)[subgraphs->size()-1]->erase(I--);
+                removed = true;
+              }
+              if(!nouse){
+                nouse = true;
+                for(auto U : (*I)->users())
+                  nouse &= find((*subgraphs)[subgraphs->size()-1]->begin(),
+                      (*subgraphs)[subgraphs->size()-1]->end(),(Instruction*)U)
+                    == (*subgraphs)[subgraphs->size()-1]->end();
+                if(nouse){
+                  (*subgraphs)[subgraphs->size()-1]->erase(I--);
+                  removed = true;
+                }  
+              }
+            }
+          }
+        }
       }
     }
   }
-
   return;
 }
+
+
 
 
 
@@ -1243,3 +1264,15 @@ void FusedBB::fillSubgraphsBBs(Instruction *I,set<string>*subset){
   return;
 
 }
+
+
+float FusedBB::getTseqSubgraph(list<Instruction*> *subgraph, map<string,long> *iterMap){
+  float tseq = 0;
+  for(auto I=subgraph->begin();I!=subgraph->end();++I){
+    if((*I)->getName().str().find("fuse.sel") == string::npos)
+      for(auto Iorig : *(*fuseMap)[*I])
+        tseq += getDelay(*I)*((*iterMap)[Iorig->getParent()->getName().str()]);
+  }
+  return tseq;
+}
+
