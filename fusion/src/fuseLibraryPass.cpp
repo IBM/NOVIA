@@ -325,7 +325,7 @@ namespace {
           counter++;
         }
         for(auto &elem : vCandidates)
-          errs() << elem.second->getName();
+          errs() << elem.second->getName() << '\n';
 
 
         std::sort(vCandidates.begin(),vCandidates.end(),compareFused);
