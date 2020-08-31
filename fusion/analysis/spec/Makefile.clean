@@ -1,0 +1,7 @@
+all: clean
+
+clean:
+	rm */out.bc */stats.csv
+
+cleanall:
+	rm -r `ls -1 -d */`

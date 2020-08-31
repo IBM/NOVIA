@@ -1,10 +1,9 @@
 source ../../../env.sh
 PASSES_DIR=../../build/src/
-BENCH_DIR=../../benchmarks/simplebr_nofuse/
-BENCHMARK_BIN=simplebr_nofuse.bin
+BENCH_DIR=../../benchmarks/deploop3/
+BENCHMARK_BIN=deploop3.bin
 
-declare -a test_inputs=('0 b' '1 b' '2 b' '3 b' '4 b' '20 b' '23 b' '-5 b')
-
+test_inputs=('0' '1' '2' '3' '4' '20' '23' '-5')
 
 i=0
 for test in "${test_inputs[@]}"

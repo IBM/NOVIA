@@ -13,14 +13,16 @@ fi
 
 name_ext="$(basename $1)"
 name="${name_ext%.*}"
+name_inl="${name}_inl.bc"
+name_reg="${name}_reg.bc"
 name_rn="${name}_rn.bc"
-name_rn_reg="${name}_rn_reg.bc"
-name_rn_inl="${name}_rn_inl.bc"
-name_ins="${name}_rn_ins.bc"
-name_o="${name}_rn_ins.o"
-name_ins_bin="${name}_rn_ins.bin"
+name_ins="${name}_ins.bc"
+name_o="${name}_ins.o"
+name_ins_bin="${name}_ins.bin"
 
-LIBS="-lpython3.6m -lm -lomp -fopenmp"
+LIBS="-lpython3.6m -lm -lomp -fopenmp -lFC"
+INLINE_STEPS=8
+export LD_LIBRARY_PATH=/home/dtrilla/git/tmp/fc/build/lib:$LD_LIBRARY_PATH
 
 #set -x
 
@@ -28,43 +30,61 @@ mkdir -p $name
 cp $1 $name/.
 cd $name
 echo "Analyzing $name"
-echo -n "Renaming and Marking Inline: "
-if [ ! -f $name_rn ]; then
-  $LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so --renameBBs < $name_ext > "$name_rn"
-  echo "done"
+if [ $INLINE_STEPS == 0 ]||[ $name == "xalancbmk_s" ]||[ $name == "omnetpp_s"  ]||[ $name == "perlbench_s" ]; then
+#if [ $INLINE_STEPS == 0 ]; then
+  cp $name_ext $name_inl
 else
-  echo "reused"
+  echo -n "Inlining: "
+  if [ ! -f $name_inl ]; then
+    tmp_in=tmp_in.bc
+    tmp_out=tmp_out.bc
+    for i in $(seq $INLINE_STEPS)
+    do
+      echo -n "Step $i "
+      if [ $i  == 1 ]; then
+        $LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so -markInline -inlStep $INLINE_STEPS < $name_ext > $tmp_out
+      else
+        $LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so -markInline -inlStep $INLINE_STEPS < $tmp_in > $tmp_out
+      fi
+      $LLVM_BIN/opt -inline < $tmp_out > $tmp_in
+    done
+    cp $tmp_in $name_inl
+    echo "done"
+  else
+    echo "reused"
+  fi
 fi
 
 echo -n "Optimizing Memory: "
-if [ ! -f $name_rn_inl ]; then
-  $LLVM_BIN/opt -mem2reg < $name_rn > $name_rn_inl
+if [ ! -f $name_reg ]; then
+  $LLVM_BIN/opt -mem2reg < $name_inl > $name_reg
   echo "done"
 else
   echo "reused"
 fi
-<< ''
-echo -n "Inlining: "
-if [ ! -f $name_rn_inl ]; then
-  $LLVM_BIN/opt -inline < $name_rn_reg > $name_rn_inl
+
+echo -n "Renaming: "
+if [ ! -f $name_rn ]; then
+  $LLVM_BIN/opt -load $FUSE_LIB/libfusionlib.so --renameBBs < $name_reg > "$name_rn"
   echo "done"
 else
   echo "reused"
 fi
-''
 
 echo -n "Instrumenting: "
 if [ ! -f $name_ins ]; then
-  $LLVM_BIN/opt -load $FUSE_LIB/libinstrumentlib.so --instrumentBBs < $name_rn_inl > $name_ins
+  $LLVM_BIN/opt -load $FUSE_LIB/libinstrumentlib.so --instrumentBBs < $name_rn > $name_ins
   echo "done"
 else
   echo "reused"
 fi
 
 echo -n "Linking Timers and Compiling: "
-if [ ! -f $name_ins_bin ]; then
+if [ ! -f $name_o ]; then
   $LLVM_BIN/llc -filetype=obj $name_ins 
-  $LLVM_BIN/clang++ -no-pie $name_o $FUSE_LIB/arch/x86/CMakeFiles/timer.dir/timer.c.o $LIBS -o "$name_ins_bin"
+fi
+if [ ! -f $name_ins_bin ]; then
+  $LLVM_BIN/clang++ -no-pie $name_o $FUSE_LIB/arch/x86/CMakeFiles/timer.dir/timer.c.o $LIBS -L /home/dtrilla/git/tmp/fc/build/lib -o "$name_ins_bin"
   echo "done"
 else
   echo "reused"

@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <gvc.h>
+#include <color.h>
 #include <sys/stat.h>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <fstream>
 
 #include "types/FusedBB.hpp"
@@ -23,4 +26,5 @@
 using namespace llvm;
 using namespace std;
 
-void drawBBGraph(FusedBB*,char*,string);
+void drawBBGraph(FusedBB*,char*,string,
+    vector<list<Instruction*>*>* subgraphs = NULL);

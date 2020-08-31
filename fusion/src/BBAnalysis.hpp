@@ -31,6 +31,5 @@ void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
 void memRAWDepAnalysis(BasicBlock*,map<Value*,Value*> *,LLVMContext &);
 pair<float,float> getCriticalPathCost(BasicBlock *);
 
-
 // Stats functions
 void getMetadataMetrics(BasicBlock*,vector<float>*, Module*);
