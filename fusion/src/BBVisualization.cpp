@@ -84,18 +84,24 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
             }
       }
 
+      if(isa<StoreInst>(I) or isa<LoadInst>(I)){
+        agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
+        agsafeset(n,(char*)"fillcolor",(char*)"red",(char*)"");
+        agsafeset(n,(char*)"fontcolor",(char*)"white",(char*)"black");
+      }
+      else if(isa<SelectInst>(I)){
+        agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
+        agsafeset(n,(char*)"fillcolor",(char*)"#ffd700",(char*)"");
+        agsafeset(n,(char*)"fontcolor",(char*)"black",(char*)"black");
+
+      }
       // If the node is merged change color
-      if(fBB->isMergedI(&I)){
+      else if(fBB->isMergedI(&I)){
         string color = rgb2hex(0,255-col_steps*fBB->getNumMerges(&I),0,true);
   
         agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
         agsafeset(n,(char*)"fillcolor",(char*)color.c_str(),(char*)"");
         agsafeset(n,(char*)"fontsize",(char*)"26",(char*)"26");
-        agsafeset(n,(char*)"fontcolor",(char*)"white",(char*)"black");
-      }
-      else if(isa<StoreInst>(I) or isa<LoadInst>(I)){
-        agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
-        agsafeset(n,(char*)"fillcolor",(char*)"red",(char*)"");
         agsafeset(n,(char*)"fontcolor",(char*)"white",(char*)"black");
       }
   
