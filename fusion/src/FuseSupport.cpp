@@ -39,7 +39,7 @@ pair<float,float> getSubgraphMetrics(vector<BasicBlock*> *bblist, vector<vector<
     (*data)[data->size()-1]->push_back(sub_area/orig_area);
     acum_sub_area += sub_area;
     acum_orig_area += orig_area;
-    errs() << "Subgraph " << count << ": " << num_merges << " " << sub_area/orig_area << "\n";
+    //errs() << "Subgraph " << count << ": " << num_merges << " " << sub_area/orig_area << "\n";
     count++;
   }
   return pair<float,float>(acum_sub_area,acum_orig_area);

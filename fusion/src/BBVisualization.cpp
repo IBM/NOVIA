@@ -53,6 +53,7 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
   string name;
 
   // Add Nodes
+  bool first = true;
   for(auto &I: *BB){
     if(&I != BB->getTerminator()){
       name = string(I.getOpcodeName());
@@ -70,37 +71,37 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
       //agsafeset(n,"fillcolor","skyblue","");
       agsafeset(n,(char*)"fontsize",(char*)"24",(char*)"24");
       
-      if(subgraphs){
+      if(subgraphs and !isa<LoadInst>(I) and !isa<StoreInst>(I)){
         bool found = false;
-        for(int sub=0; sub<subgraphs->size() and !found;++sub)
-          for(auto *It : *(*subgraphs)[sub])
+        for(int sub=0; sub<subgraphs->size() and !found;++sub){
+          for(auto *It : *(*subgraphs)[sub]){
             if(&I == It){
-              string color = rgb2hex(0,0,255-sub_steps*(1+sub),true);
+              string color = rgb2hex(0,0,255-sub*sub_steps,true);
               agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
-              agsafeset(n,(char*)"fillcolor",(char*)color.c_str(),(char*)"");
+              agsafeset(n,(char*)"fillcolor",(char*)color.c_str(),(char*)"white");
               agsafeset(n,(char*)"fontcolor",(char*)"white",(char*)"black");
               found = true;
               break;
             }
+          }
+        }
       }
 
       if(isa<StoreInst>(I) or isa<LoadInst>(I)){
         agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
-        agsafeset(n,(char*)"fillcolor",(char*)"red",(char*)"");
+        agsafeset(n,(char*)"fillcolor",(char*)"red",(char*)"white");
         agsafeset(n,(char*)"fontcolor",(char*)"white",(char*)"black");
       }
       else if(isa<SelectInst>(I)){
         agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
-        agsafeset(n,(char*)"fillcolor",(char*)"#ffd700",(char*)"");
+        agsafeset(n,(char*)"fillcolor",(char*)"#ffd700",(char*)"white");
         agsafeset(n,(char*)"fontcolor",(char*)"black",(char*)"black");
-
       }
-      // If the node is merged change color
       else if(fBB->isMergedI(&I)){
         string color = rgb2hex(0,255-col_steps*fBB->getNumMerges(&I),0,true);
   
         agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
-        agsafeset(n,(char*)"fillcolor",(char*)color.c_str(),(char*)"");
+        agsafeset(n,(char*)"fillcolor",(char*)color.c_str(),(char*)"white");
         agsafeset(n,(char*)"fontsize",(char*)"26",(char*)"26");
         agsafeset(n,(char*)"fontcolor",(char*)"white",(char*)"black");
       }
@@ -134,6 +135,11 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
                 names[name] = 0;
               }
               m = agnode(G,(char*)name.c_str(),1);
+              agsafeset(m,(char*)"shape",(char*)"rarrow",(char*)"");
+              agsafeset(m,(char*)"style",(char*)"filled",(char*)"");
+              agsafeset(m,(char*)"color",(char*)"red",(char*)"");
+              agsafeset(m,(char*)"fillcolor",(char*)"#b19cd9",(char*)"white");
+              agsafeset(m,(char*)"fontcolor",(char*)"black",(char*)"black");
               visited[op] = m;
             }
             else{
@@ -145,6 +151,38 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
         if(m)
           agedge(G,m,n,NULL,1);
       }  
+      // Get Live Outs
+      bool liveout = false;
+      Value *Uptr = NULL;
+      for(auto *U : I.users()){
+        Uptr = (Value*)U;
+        liveout = ((Instruction*)U)->getParent() != BB;
+        if(liveout)
+          break;
+      }
+      if(liveout){
+        if(visited.count(Uptr)){
+          m = visited[Uptr];
+        }
+        else{
+          name = "outVal";
+          if(names.count(name)){
+            names[name]++;
+            name = name+to_string(names[name]);
+          }
+          else{
+            names[name] = 0;
+          }
+          m = agnode(G,(char*)name.c_str(),1);
+          visited[Uptr] = m;
+          agsafeset(m,(char*)"shape",(char*)"larrow",(char*)"");
+          agsafeset(m,(char*)"style",(char*)"filled",(char*)"");
+          agsafeset(m,(char*)"color",(char*)"red",(char*)"");
+          agsafeset(m,(char*)"fillcolor",(char*)"#9932cc",(char*)"white");
+          agsafeset(m,(char*)"fontcolor",(char*)"white",(char*)"black");
+        }
+        agedge(G,n,m,NULL,1);
+      }
     }
   }
 
