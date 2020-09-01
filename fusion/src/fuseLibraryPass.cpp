@@ -324,23 +324,24 @@ namespace {
           vCandidates.erase(vCandidates.begin()+elem-counter);
           counter++;
         }
-        for(auto &elem : vCandidates)
-          errs() << elem.second->getName() << '\n';
+        /*for(auto &elem : vCandidates)
+          errs() << elem.second->getName() << '\n';*/
 
 
         std::sort(vCandidates.begin(),vCandidates.end(),compareFused);
-        stats << "Subgraphs,Area Savings,Speedup,BBs,Size,Tseq,CritPath,Weight\n";
+        stats << "Graph,Subgraph,Area Savings,Speedup,BBs,Size,Tseq,CritPath,Weight\n";
         vector<vector<string> > list_bbs;
         float acum_sub_area = 0;
         float acum_orig_area = 0;
+        int total_subgraphs = 0;
         for(int spl=0;spl<vCandidates.size();++spl){
           vector<list<Instruction*>*> subgraphs;
           vCandidates[spl].second->splitBB(&subgraphs);
-          for(auto *L : subgraphs){
+          /*for(auto *L : subgraphs){
             errs() << "Graph\n";
             for(auto *I : *L)
               I->dump();
-          }
+          }*/
           vector<vector<float>*> data;
           pair<float,float> tmp_areas;
           vector<float> tseq_sub;
@@ -350,7 +351,7 @@ namespace {
             drawBBGraph(vCandidates[spl].second,(char*)(vCandidates[spl]
                 .second->getName()).c_str(),visualDir,
                 &subgraphs);
-          errs() << vCandidates[spl].second->getName() << "\n";
+          //errs() << vCandidates[spl].second->getName() << "\n";
           
           for(int i=0;i<subgraphs.size();++i){
             if(subgraphs[i]->size() > 0){
@@ -373,10 +374,13 @@ namespace {
             fBB->mergeBB(BBtmp);
             fBB->KahnSort();
             fBB->getMetrics(&vs,&M);
-            errs() << "Subgraph " << i << " ";
+            
+            
+            /*errs() << "Subgraph " << i << " ";
             for(auto elem : vs)
               errs() << elem << " ";
-            errs() << "\n";
+            errs() << "\n";*/
+
             vector<float> orig_data;
             FusedBB *tmp = vCandidates[spl].second;
             for(auto *I: *(subgraphs[i])){
@@ -397,12 +401,14 @@ namespace {
               acum_sub_area += tmp_areas.first;
               acum_orig_area += tmp_areas.second;
               list_bbs.push_back(vector<string>());
+              list_bbs[list_bbs.size()-1].push_back(fBB->getName());
               for(auto name: subset){
                 list_bbs[list_bbs.size()-1].push_back(name);
               }
               if(1)
                 drawBBGraph(fBB,(char*)(fBB->getName()+
-                      string("spl")+to_string(spl)).c_str(),visualDir);
+                      string("spl")+to_string(i)).c_str(),visualDir);
+              total_subgraphs++;
             }
 
             float sub_speed = 1/((1-new_weight)+new_weight/((orig_cp*iterations)/(vs[11]*iterations)));
@@ -420,12 +426,15 @@ namespace {
             int x = 0;
             for(auto elem : data){
               if((*elem)[0] < 1){
-                //stats << "Subgraph " << i << " ";
+                stats << list_bbs[list_bbs.size()-1][0] << ',';
+                for(int l = 1; l < list_bbs[list_bbs.size()-1].size(); ++l)
+                  stats << list_bbs[list_bbs.size()-1][l];
+                stats << ',';
                 for(auto datum : *elem)
                   stats << datum <<  ",";
                 stats << "\n";
+                ++x;
               }
-              ++x;
             }
           for(auto datum: data)
             delete datum;
