@@ -29,6 +29,46 @@ FusedBB::~FusedBB(){
   delete BB;
   return;
 }
+/*
+FusedBB::FusedBB(FusedBB* Copy, list<Instruction*> subgraph){
+  mergedBBs = new set<BasicBlock*>; 
+  LiveOut = new map<Instruction*, Instruction* >;
+  linkOps = new map<Value*,set<pair<Value*,BasicBlock*> >* >;
+  argsBB = new map<Value*,BasicBlock*>;
+  annotMerges = new map<Instruction*,set<BasicBlock*>* >;
+  countMerges = new map<Instruction*,int>;
+  storeDomain = new map<Instruction*,int>;
+  rawDeps = new map<Instruction*,set<Instruction*>* >;
+  fuseMap = new map<Instruction*,set<Instruction*>* >;
+  safeMemI = new map<Instruction*,unsigned>;
+  selMap = new map<Instruction*,BasicBlock*>;
+  liveInPos = new map<Value*,map<BasicBlock*,int>* >;
+  LiveIn = new set<Value*>;
+  liveOutPos = new map<Value*,int>;
+  this->Context = Copy->Context;
+  
+  ValueToValueMapTy VMap;
+  
+  this->BB = BasicBlock::Create(*Copy->Context,"");  
+  for (const Instruction &I : *Copy->getBB()){
+    if(find(subgraph->begin(),subgraph->end(),I) != subgraph->end()){
+      Instruction *NewInst = I.clone();
+      NewInst->setName(I.getName());
+      BB->getInstList().push_back(NewInst);
+      VMap[&I] = NewInst;  
+
+
+
+    }
+  }
+
+  
+  SmallVector<BasicBlock*,1> bbList;
+  bbList.push_back(this->BB);
+  remapInstructionsInBlocks(bbList,VMap);
+  
+  this->BB->setName(Copy->getName());
+}*/
 
 FusedBB::FusedBB(FusedBB* Copy){
   ValueToValueMapTy VMap;
@@ -823,6 +863,7 @@ void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* 
           
         }
       }
+      F->dump();
 			Value *outStruct = Builder.CreateCall(F,ArrayRef<Value*>(inStruct));
       
       // Removing the offloaded instructions
@@ -1124,6 +1165,9 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
     of.close();
     delete NewMod;
     */
+    // HLS and OpenCL Stuff
+    MDNode *N = MDNode::get(f->getContext(),NULL);
+    f->setMetadata("opencl.kernels",N);
 
     return f;
   }
@@ -1206,6 +1250,14 @@ void FusedBB::splitBB(vector<list<Instruction*> *> *subgraphs){
       }
     }
   }
+
+  /*for(auto List : subgraphs){
+    
+    for(auto I : List){
+
+    }
+  }*/
+
   return;
 }
 
