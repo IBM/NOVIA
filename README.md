@@ -1,3 +1,5 @@
+[![Build Status](https://travis.ibm.com/ibm-llvm/crucible.svg?token=5Gz4ZkcRXojuPzsm6v4k&branch=develop)](https://travis.ibm.com/ibm-llvm/crucible)
+
 # fuseacc
 LLVM IR fusion library
 
