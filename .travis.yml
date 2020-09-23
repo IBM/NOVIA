@@ -1,3 +1,15 @@
 language: python
 python:
   - "3.6" # default 
+
+before_install:
+  - sudo apt-get install cmake
+
+install:
+  ./compile_llvm
+  - cd fusion
+  - mkdir build
+  - cd build
+  - source ../../env.sh
+  - cmake ../
+  - make
