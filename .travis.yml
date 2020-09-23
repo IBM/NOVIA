@@ -8,6 +8,7 @@ addons:
     packages:
       - cmake
 install:
+  - cd fuseacc
   - ./compile_llvm
   - cd fusion
   - mkdir build
