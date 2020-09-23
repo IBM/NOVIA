@@ -3,7 +3,7 @@ python:
   - "3.6" # default 
 
 before_install:
-  - sudo apt-get install cmake
+  - sudo apt-get -y install cmake
 
 install:
   ./compile_llvm
