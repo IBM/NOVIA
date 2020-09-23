@@ -8,7 +8,7 @@ addons:
     packages:
       - cmake
 install:
-  - cd ibm-llvm/crucible
+  - cd crucible
   - ./compile_llvm
   - cd fusion
   - mkdir build
