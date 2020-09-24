@@ -9,6 +9,7 @@ addons:
   apt:
     packages:
       - cmake
+      - g++-10
 install:
   - ./compile_llvm.sh
   - cd fusion
