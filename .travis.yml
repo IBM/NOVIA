@@ -1,9 +1,10 @@
+language: python
 dist: bionic
 addons:
   apt:
     packages:
       - cmake
-language: python
+      - g++-7
 python:
   - "3.6" # default 
 install:
