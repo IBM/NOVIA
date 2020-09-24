@@ -12,4 +12,4 @@ export LLVM_BIN=$DIR/llvm-project/build/bin/
 
 export FUSE_LIB=$DIR/fusion/build/src/
 
-export NUM_THREADS=1
+export NUM_THREADS=16
