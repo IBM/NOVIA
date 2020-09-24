@@ -3,6 +3,8 @@ python:
   - "3.6" # default 
 os:
   - linux
+dist:
+  - bionic
 addons:
   apt:
     packages:
