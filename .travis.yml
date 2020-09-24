@@ -1,13 +1,12 @@
-language: python
-python:
-  - "3.6" # default 
-os: linux
 dist: bionic
 addons:
   apt:
     packages:
       - cmake
       - g++-10
+language: python
+python:
+  - "3.6" # default 
 install:
   - ./compile_llvm.sh
   - cd fusion
