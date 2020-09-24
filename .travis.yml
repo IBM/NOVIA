@@ -3,7 +3,6 @@ addons:
   apt:
     packages:
       - cmake
-      - g++-10
 language: python
 python:
   - "3.6" # default 
