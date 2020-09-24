@@ -4,7 +4,7 @@ addons:
   apt:
     packages:
       - cmake
-      - g++-7
+      - gcc-7
 python:
   - "3.6" # default 
 install:
