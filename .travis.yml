@@ -15,3 +15,5 @@ install:
   - source ../../env.sh
   - cmake ../
   - make
+notifications:
+  email: never
