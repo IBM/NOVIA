@@ -39,7 +39,7 @@ class FusedBB{
     map<Instruction*,BasicBlock*> *selMap;
 
     // Stats & Analytics
-    map<Instruction*,set<BasicBlock*>* > *annotMerges;
+    set<Instruction*> *annotInst;
     map<Instruction*,int> *countMerges;
     map<Instruction*,unsigned> *safeMemI;
 
@@ -56,6 +56,7 @@ class FusedBB{
     FusedBB(FusedBB*,FusedBB*);   // Merge Constructor
     // copye
     FusedBB(FusedBB*);
+    FusedBB(FusedBB*,list<Instruction*>*);
     // destructor
     ~FusedBB();
     //init
@@ -68,7 +69,9 @@ class FusedBB{
     void splitBB(vector<list<Instruction*> *> *);
     // enablers
     Function *createOffload(Module *);
-    bool insertCall(Function *, vector<BasicBlock*> *);
+    Function *createInline(Module *);
+    bool insertOffloadCall(Function *);
+    bool insertInlineCall(Function *);
 
     // helpers
     bool searchDfs(Instruction*,Instruction*,set<Instruction*>*);

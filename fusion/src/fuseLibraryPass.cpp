@@ -79,7 +79,7 @@ namespace {
         "elects),Other Instructions,Sequential Time,Memory Footprint (bits)"
         ",Critical Path Communication,Critical Path Computation,Area,"
         "Static Power,Dynamic Power,Efficiency,%DynInstr,Saved Area,Overhead Area,"
-        "%Saved Area,SpeedUp,MergedBBs,Merit\n";
+        "%Saved Area,SpeedUp,MergedBBs,Area Efficiency,Merit\n";
 
       // Read the dynamic info file
       readDynInfo(dynamicInfoFile,&profileMap, &iterMap);
@@ -213,6 +213,7 @@ namespace {
               fused[i]->push_back(relative_saved_area);
               fused[i]->push_back(speedup);
               fused[i]->push_back(FusedBBs[i]->getNumMerges());
+              fused[i]->push_back(speedup/(*fused[i])[12]);
               fused[i]->push_back(merit);
               if(force)
                 max_index = i;
@@ -297,7 +298,7 @@ namespace {
           }
         }
         stats.flush(); // Flush buffer before dangerous operations
-				Foff = vCandidates[max_sel].second->createOffload(&M);
+				//Foff = vCandidates[max_sel].second->createOffload(&M);
         
         // Split experimentation
         // Remove repeated candidates
@@ -329,8 +330,9 @@ namespace {
 
 
         std::sort(vCandidates.begin(),vCandidates.end(),compareFused);
-        stats << "Graph,Subgraph,Area Savings,Speedup,BBs,Size,Tseq,CritPath,Weight\n";
+        stats << "Graph,Subgraph,Area Savings,Area,Speedup,BBs,Size,Tseq,CritPath,Weight,Area Efficiency\n";
         vector<vector<string> > list_bbs;
+        int num_candidates = 0;
         float acum_sub_area = 0;
         float acum_orig_area = 0;
         int total_subgraphs = 0;
@@ -355,80 +357,65 @@ namespace {
           
           for(int i=0;i<subgraphs.size();++i){
             if(subgraphs[i]->size() > 0){
-            set<string> subset;
-            //vector<float> tseq_sub;
-            BasicBlock *BBtmp = BasicBlock::Create(M.getContext(),"");  
-            ValueToValueMapTy VMap;
-            vector<float> vs;
-            for (auto *I: *(subgraphs[i])){
-              Instruction *NewInst = I->clone();
-              NewInst->setName(I->getName());
-              BBtmp->getInstList().push_back(NewInst);
-              BBtmp->setName(vCandidates[spl].second->getName());
-              VMap[I] = NewInst;
-            }
-            SmallVector<BasicBlock*,1> bblist_tmp;
-            bblist_tmp.push_back(BBtmp);
-            remapInstructionsInBlocks(bblist_tmp,VMap);
-            FusedBB *fBB = new FusedBB(&M.getContext(),"");
-            fBB->mergeBB(BBtmp);
-            fBB->KahnSort();
-            fBB->getMetrics(&vs,&M);
+              set<string> subset;
+              vector<float> vs;
+              FusedBB *splitBB = new FusedBB(vCandidates[spl].second,subgraphs[i]);
+              splitBB->getBB()->setName(splitBB->getName()+string("spl")+to_string(i));
+              splitBB->getMetrics(&vs,&M);
             
-            
-            /*errs() << "Subgraph " << i << " ";
-            for(auto elem : vs)
-              errs() << elem << " ";
-            errs() << "\n";*/
-
-            vector<float> orig_data;
-            FusedBB *tmp = vCandidates[spl].second;
-            for(auto *I: *(subgraphs[i])){
-              tmp->fillSubgraphsBBs(I,&subset);
-            }
-            vCandidates[spl].second->getMetrics(&orig_data,&M);
-            float orig_tseq = getTseq(&bbList,&prebb,NULL,vCandidates[spl].second,&profileMap,&iterMap,&subset);
-            float orig_cp = orig_data[11];
-            float orig_weight = getWeight(&bbList,&prebb,&orig_data,vCandidates[spl].second,&profileMap,&iterMap);
-            float red_tseq = orig_tseq/tseq_sub[i];
-            float new_weight = orig_weight/red_tseq;
-            float iterations = 0;
-            
-            for(auto name: subset){
-              iterations += iterMap[name];
-            }
-            if((*data[i])[0] < 1){
-              acum_sub_area += tmp_areas.first;
-              acum_orig_area += tmp_areas.second;
-              list_bbs.push_back(vector<string>());
-              list_bbs[list_bbs.size()-1].push_back(fBB->getName());
-              for(auto name: subset){
-                list_bbs[list_bbs.size()-1].push_back(name);
+              vector<float> orig_data;
+              FusedBB *tmp = vCandidates[spl].second;
+              for(auto *I: *(subgraphs[i])){
+                tmp->fillSubgraphsBBs(I,&subset);
               }
-              if(1)
-                drawBBGraph(fBB,(char*)(fBB->getName()+
-                      string("spl")+to_string(i)).c_str(),visualDir);
-              total_subgraphs++;
+              vCandidates[spl].second->getMetrics(&orig_data,&M);
+              float orig_tseq = getTseq(&bbList,&prebb,NULL,vCandidates[spl].second,&profileMap,&iterMap,&subset);
+              orig_tseq = vCandidates[spl].second->getTseqSubgraph(subgraphs[i],&iterMap);
+              float orig_cp = orig_data[11];
+              float orig_weight = getWeight(&bbList,&prebb,&orig_data,vCandidates[spl].second,&profileMap,&iterMap);
+              float red_tseq = orig_tseq/tseq_sub[i];
+              float new_weight = orig_weight/red_tseq;
+              float iterations = 0;
+            
+              for(auto name: subset){
+                iterations += iterMap[name];
+              }
+              if((*data[i])[0] < 1){
+                Function *fSpl = splitBB->createInline(&M);
+                splitBB->insertInlineCall(fSpl);
+                acum_sub_area += tmp_areas.first;
+                acum_orig_area += tmp_areas.second;
+                list_bbs.push_back(vector<string>());
+                list_bbs[list_bbs.size()-1].push_back(splitBB->getName());
+                for(auto name: subset){
+                  list_bbs[list_bbs.size()-1].push_back(name);
+                }
+                if(1)
+                  drawBBGraph(splitBB,(char*)splitBB->getName().c_str(),visualDir);
+                total_subgraphs++;
+              }
+              else{
+                delete splitBB;
+              }
+
+              float sub_speed = 1/((1-new_weight)+new_weight/((orig_tseq)/(vs[11]*iterations)));
+              data[i]->push_back(vs[12]);
+              data[i]->push_back(sub_speed);
+              data[i]->push_back(subset.size());
+              data[i]->push_back(subgraphs[i]->size());
+              data[i]->push_back(vs[8]);
+              data[i]->push_back(vs[11]);
+              data[i]->push_back(new_weight);
+              data[i]->push_back(sub_speed/vs[12]);
+              }
             }
 
-            float sub_speed = 1/((1-new_weight)+new_weight/((orig_cp*iterations)/(vs[11]*iterations)));
-            data[i]->push_back(sub_speed);
-            data[i]->push_back(subset.size());
-            data[i]->push_back(subgraphs[i]->size());
-            data[i]->push_back(vs[8]);
-            data[i]->push_back(vs[11]);
-            data[i]->push_back(new_weight);
-
-            delete fBB;
-            delete BBtmp;
-          }
-          }
             int x = 0;
             for(auto elem : data){
               if((*elem)[0] < 1){
-                stats << list_bbs[list_bbs.size()-1][0] << ',';
-                for(int l = 1; l < list_bbs[list_bbs.size()-1].size(); ++l)
-                  stats << list_bbs[list_bbs.size()-1][l];
+                stats << list_bbs[num_candidates+x][0] << ',';
+                for(int l = 1; l < list_bbs[num_candidates+x].size(); ++l)
+                  stats << list_bbs[num_candidates+x][l];
                 stats << ',';
                 for(auto datum : *elem)
                   stats << datum <<  ",";
@@ -436,9 +423,11 @@ namespace {
                 ++x;
               }
             }
-          for(auto datum: data)
-            delete datum;
-        }
+            num_candidates += x;
+
+            for(auto datum: data)
+              delete datum;
+          }
 
         int count = 0;
         stats << "\nListings\n";
@@ -453,8 +442,8 @@ namespace {
         stats << acum_sub_area/acum_orig_area << "\n";
 
         ////////////////////////
-				vCandidates[0].second->insertCall(Foff,&bbList);
-        vCandidates.erase(vCandidates.begin());
+				//vCandidates[0].second->insertOffloadCall(Foff,&bbList);
+        //vCandidates.erase(vCandidates.begin());
 			}
      
       for(auto E : vCandidates) 

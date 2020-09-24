@@ -1168,7 +1168,7 @@ Function* FusedBB::createInline(Module *Mod){
 
 
   // Instantiate function
-  FunctionType *funcType = FunctionType::get(outStruct->getPointerTo(),
+  FunctionType *funcType = FunctionType::get(outStruct,
       ArrayRef<Type*>(inputTypes),false);
   Function *f = Function::Create(funcType,
       Function::ExternalLinkage,"inline_func",Mod);
@@ -1420,7 +1420,7 @@ int FusedBB::size(){
   return mergedBBs->size();
 }
 
-void traverseExclude(Instruction *I, set<Instruction*> *visited,
+void traverseExclude(Instruction *I, set<Instruction*> visited,
     set<Instruction*> *excluded){
   if(!excluded->count(I) and !visited->count(I)){
     excluded->insert(I);
@@ -1440,17 +1440,17 @@ void traverseSubgraph(Instruction *I, set<Instruction*> *visited,
     list->push_back(I);
     for(auto &Op : I->operands()){
       if(isa<Instruction>(Op) and cast<Instruction>(Op)->getParent() == 
-          I->getParent() and !isa<LoadInst>(Op) and !isa<StoreInst>(Op))
-        traverseSubgraph(cast<Instruction>(Op),visited,excluded,list);
+          I->getParent())
+        traverseSubgraph(cast<Instruction>(Op),visited,list);
     }
     for(auto Us : I->users()){
       if(isa<Instruction>(Us) and cast<Instruction>(Us)->getParent() ==
           I->getParent())
-        traverseSubgraph(cast<Instruction>(Us),visited,excluded,list);
+        traverseSubgraph(cast<Instruction>(Us),visited,list);
     }
   }
-  else if(!visited->count(I)){
-    traverseExclude(I,visited,excluded);
+  else{
+    tarverseExclude(I,visited,excluded);
   }
 
   return;
@@ -1462,9 +1462,7 @@ void FusedBB::splitBB(vector<list<Instruction*> *> *subgraphs){
   for(auto &I : *this->BB){
     if(!visited.count(&I)){
       subgraphs->push_back(new list<Instruction*>);
-      set<Instruction*> excluded;
-      if(I.getName() != "fuse.sel")
-        traverseSubgraph(&I,&visited,&excluded,(*subgraphs)[subgraphs->size()-1]);
+      traverseSubgraph(&I,&visited,(*subgraphs)[subgraphs->size()-1]);
       if((*subgraphs)[subgraphs->size()-1]->empty()){
         delete (*subgraphs)[subgraphs->size()-1];
         subgraphs->pop_back();
