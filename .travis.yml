@@ -1,3 +1,9 @@
+language: python
+python:
+  - "3.6" # default 
+os: linux
+cache:
+  apt: true
 dist: bionic
 addons:
   apt:
@@ -5,8 +11,6 @@ addons:
       - cmake
       - gcc-7
 language: python
-python:
-  - "3.6" # default 
 install:
   - ./compile_llvm.sh
   - cd fusion
