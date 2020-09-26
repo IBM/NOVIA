@@ -1,6 +1,6 @@
 arch: amd64
 os: linux
-dist: bionic
+dist: focal
 language: python
 python:
   - "3.6" # default 
