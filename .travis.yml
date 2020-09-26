@@ -1,10 +1,11 @@
+arch: amd64
+os: linux
+dist: bionic
 language: python
 python:
   - "3.6" # default 
-os: linux
 cache:
   apt: true
-dist: bionic
 addons:
   apt:
     packages:
