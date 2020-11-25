@@ -1,7 +1,7 @@
 all: clean
 
 clean:
-	rm */out.bc */stats.csv
+	rm -f */out.bc */stats.csv */imgs/*.png
 
 cleanall:
 	rm -r `ls -1 -d */`

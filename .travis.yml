@@ -1,15 +1,22 @@
+arch: amd64
+os: linux
+dist: focal
 language: python
 python:
   - "3.6" # default 
-
-before_install:
-  - sudo apt-get -y install cmake
-
+addons:
+  apt:
+    packages:
+      - cmake
+      - gcc-7
+language: python
 install:
-  ./compile_llvm
+  - ./compile_llvm.sh
   - cd fusion
   - mkdir build
   - cd build
   - source ../../env.sh
   - cmake ../
   - make
+notifications:
+  email: never

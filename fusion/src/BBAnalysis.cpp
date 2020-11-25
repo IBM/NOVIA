@@ -81,6 +81,7 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
   bool samecall = true;
   if(isa<CallInst>(Ia) and isa<CallInst>(Ib))
     samecall = cast<CallInst>(Ia).getCaller() == cast<CallInst>(Ib).getCaller();
+  samecall &= !isa<InvokeInst>(Ia) and !isa<InvokeInst>(Ib);
   bool samegetelemptr = true;
   if(isa<GetElementPtrInst>(Ia) and isa<GetElementPtrInst>(Ib) and samety and numops)
     if(cast<PointerType>(Ia.getOperand(0)->getType())->getElementType()->isStructTy())
@@ -220,8 +221,8 @@ float dfsCrit(Instruction *I, BasicBlock *BB,map<Instruction*,float> *visited){
       if(tmp>cost)
         cost = tmp;
     }
-    (*visited)[I] = cost+getDelay(I);
-    return cost + getDelay(I);
+    (*visited)[I] = cost+getHwDelay(I);
+    return cost + getHwDelay(I);
   }
   return 0;
 }
@@ -291,7 +292,7 @@ pair<float,float> getCriticalPathCost(BasicBlock *BB){
  * @param *M LLVM Module
  */
 
-void getMetadataMetrics(BasicBlock *BB, vector<float> *data, Module *M){
+void getMetadataMetrics(BasicBlock *BB, vector<double> *data, Module *M){
   MDNode *N;
 	DataLayout DL  = M->getDataLayout();
   float orig_inst = 0;
@@ -303,12 +304,12 @@ void getMetadataMetrics(BasicBlock *BB, vector<float> *data, Module *M){
   float num_merges = 0;
   float num_sel = 0;
   float mem_time = 0;
-  float time = 0;
+  double time = 0;
   float num_ld = 0, num_st = 0;
   float power = 0;
   pair<float,float> crit_path = getCriticalPathCost(BB);
   for(auto I = BB->begin(); I != BB->end() ; ++I){
-    time += getDelay(&*I);
+    time += getSwDelay(&*I);
     if (isa<StoreInst>(I) or isa<LoadInst>(I)){
       if(isa<StoreInst>(I)){
         footprint += DL.getTypeSizeInBits(I->getOperand(0)->getType());

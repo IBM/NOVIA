@@ -45,35 +45,47 @@ def main(argv):
         "/home/dtrilla/git/fuseacc/fusion/build/src/libfusionlib.so -mergeBBList -bbs "\
         "%BITCODE_DIR%bblist.txt -dynInf %BITCODE_DIR%weights.txt --graph_dir %BITCODE_DIR%imgs < %LINKED_BITCODE% "\
         "> %BITCODE_DIR%out.bc"
+    #NO GRAPH
+    llvm_merge_string = "/home/dtrilla/git/fuseacc/llvm-project/build/bin/opt -load "\
+        "/home/dtrilla/git/fuseacc/fusion/build/src/libfusionlib.so -mergeBBList -bbs "\
+        "%BITCODE_DIR%bblist.txt -dynInf %BITCODE_DIR%weights.txt < %LINKED_BITCODE% "\
+        "> %BITCODE_DIR%out.bc"
 
-    os.popen(mkdir_string.replace("%NAME%",mdir))
+    subprocess.call(mkdir_string.replace("%NAME%",mdir),shell=True)
 
     # Rename all functions and basic blocks to avoid collision
     for i in range(len(bitcodes)):
+        #print(llvm_rename_string.replace("%BITCODE%",bitcodes[i])
+        #      .replace("%SUFFIX%",str(i)).replace("%BITCODE_RF%",bitcode_rfs[i]))
         if(not os.path.isfile(bitcode_rfs[i])):
-            os.popen(llvm_rename_string.replace("%BITCODE%",bitcodes[i])
-                 .replace("%SUFFIX%",str(i)).replace("%BITCODE_RF%",bitcode_rfs[i]))
+            subprocess.call(llvm_rename_string.replace("%BITCODE%",bitcodes[i])
+                 .replace("%SUFFIX%",str(i)).replace("%BITCODE_RF%",bitcode_rfs[i]),shell=True)
+
 
     # Merge Weights
     fm = open(mdir+"/weights.txt",'w')
     fbbs = open(mdir+"bblist.txt",'w')
-    fapp = open('apps.txt','r')
-    prop = []
+    #fapp = open('apps.txt','r')
+    prop = [1/float(len(bitcode_dirs))]*len(bitcode_dirs)
     topbbs = [0]*len(bitcode_dirs)
-    for line in fapp:
-        prop += [float(line)]
+    #for line in fapp:
+    #    prop += [float(line)]
     print(prop,sum(prop[:len(bitcode_dirs)]))
     print(bitcode_dirs)
-    fapp.close()
+    #fapp.close()
     weights_list = []
     total = 0.0
     for i in range(len(bitcode_dirs)): 
         f = open(bitcode_dirs[i]+"weights.txt",'r')
         fh = open(bitcode_dirs[i]+"histogram.txt",'r')
+        fb = open(bitcode_dirs[i]+"bblist.txt","r")
         for line in fh:
             spl = line.split()
             weights_list += [[spl[0]+str(i),float(spl[1])*prop[i],int(spl[2])]]
             total += float(spl[1])*prop[i]
+        for line in fb:
+            fbbs.write(line.rstrip()+str(i)+'\n')
+    fbbs.close()
     for i in weights_list:
         i[1] = i[1]/total
         #for line in f:
@@ -87,14 +99,14 @@ def main(argv):
     for w in weights_list:
         fm.write(w[0]+' '+str(w[1])+' '+str(w[2])+'\n')
     while(count < len(bitcode_dirs)*10 or i < len(weights_list)):
-        index = int(weights_list[i][0][-1])
+        index = int(weights_list[i][0].split('r')[-1])
         if topbbs[index] < 10:
-            fbbs.write(weights_list[i][0]+'\n')
+            #fbbs.write(weights_list[i][0]+'\n')
             count += 1
             topbbs[index] += 1
         i += 1
     fm.close()
-    fbbs.close()
+    #fbbs.close()
         
     # Extract functions and link together
     func_list = []
@@ -126,8 +138,10 @@ def main(argv):
         #print(stream)
 
     print("linking")
-    stream = os.system(llvm_link_string.replace("%BITCODES%",' '.join(bitcode_rfs))
-                      .replace("%LINKED_BITCODE%",linked_bc))
+    if(not os.path.isfile(linked_bc)):
+        stream = os.system(llvm_link_string.replace("%BITCODES%",' '.join(bitcode_rfs)).replace("%LINKED_BITCODE%",linked_bc))
+    else:
+        print("reused")
     #print(stream)
 
 

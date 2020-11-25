@@ -68,7 +68,7 @@ FusedBB::FusedBB(FusedBB* Copy, list<Instruction*> *subgraph){
         (*safeMemI)[NewInst] = (*(Copy->safeMemI))[&I];
 
       if(Copy->selMap->count(&I))
-        (*selMap)[NewInst] = new set<BasicBlock*>(*(*(Copy->selMap))[&I]);
+        (*selMap)[NewInst] = (*(Copy->selMap))[&I];
 
     }
   }
@@ -163,10 +163,9 @@ FusedBB::FusedBB(FusedBB* Copy){
   for(auto E : *Copy->safeMemI)
     (*safeMemI)[cast<Instruction>(VMap[cast<Value>(E.first)])] = E.second;
 
-  selMap = new map<Instruction*,set<BasicBlock*>*>;
+  selMap = new map<Instruction*,BasicBlock*>;
   for(auto E : *Copy->selMap)
-    (*selMap)[cast<Instruction>(VMap[cast<Value>(E.first)])] = 
-      new set<BasicBlock*> (*E.second);
+    (*selMap)[cast<Instruction>(VMap[cast<Value>(E.first)])] = E.second;
 
   liveInPos = new map<Value*,map<BasicBlock*,int>* >;
   for(auto E : *Copy->liveInPos)
@@ -195,7 +194,7 @@ void FusedBB::init(LLVMContext *Context){
   rawDeps = new map<Instruction*,set<Instruction*>* >;
   fuseMap = new map<Instruction*,set<Instruction*>* >;
   safeMemI = new map<Instruction*,unsigned>;
-  selMap = new map<Instruction*,set<BasicBlock*>*>;
+  selMap = new map<Instruction*,BasicBlock*>;
   liveInPos = new map<Value*,map<BasicBlock*,int>* >;
   LiveIn = new set<Value*>;
   liveOutPos = new map<Value*,int>;
@@ -214,34 +213,6 @@ void FusedBB::addMergedBB(BasicBlock *BB){
   return;
 }
 
-bool FusedBB::checkSelects(Value *Vorig, Value *Vfused,BasicBlock *BB,
-    map<Value*,Value*> *SubOp, set<Value*> *LiveInBB){
-  bool found = false;
-  if(Vfused->getName() == "fuse.sel"){
-    Instruction *If = cast<Instruction>(Vfused);
-    if(If->getOperand(1)->getName() == "fuse.sel"){
-      found = checkSelects(Vorig,If->getOperand(1),BB,SubOp,LiveInBB);
-    }
-    else if(areOpsMergeable(If->getOperand(1),Vorig,this->BB,BB,SubOp,
-          this->LiveIn,LiveInBB)){
-      Value *SelVal = new Argument(Type::getInt1Ty(*this->Context),
-          "fuse.sel.arg");
-      If->setOperand(0,SelVal);
-      (*selMap)[If]->insert(BB);
-      found = true;
-    }
-    else if(If->getOperand(2)->getName() == "fuse.sel"){
-      found = checkSelects(Vorig,If->getOperand(2),BB,SubOp,LiveInBB);
-    }
-    else if(areOpsMergeable(If->getOperand(2),Vorig,this->BB,BB,SubOp,
-          this->LiveIn,LiveInBB)){
-      found = true;
-    }
-  }
-
-  return false;
-}
-
 void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
     map<Value*,Value*> *SubOp, IRBuilder<> *Builder,
     Value *SelVal, set<Value*> *LiveInBB){
@@ -251,13 +222,11 @@ void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
     Value *Vfused = Ifused->getOperand(i);
     for(int j = 0; j < Iorig->getNumOperands() and !match.count(i); ++j){
       Value *Vorig = Iorig->getOperand(j);
-      if(Ifused->isCommutative() or !Ifused->isCommutative() and i == j){
-        if(!used.count(j) and 
-           (areOpsMergeable(Vfused,Vorig,Ifused->getParent(),
-                             Iorig->getParent(),SubOp,this->LiveIn,LiveInBB) or 
-            checkSelects(Vorig,Vfused,Iorig->getParent(),SubOp,LiveInBB))){
+      if(areOpsMergeable(Vfused,Vorig,Ifused->getParent(),Iorig->getParent(),
+            SubOp,this->LiveIn,LiveInBB) and !used.count(j)){
+        if(Ifused->isCommutative() or !Ifused->isCommutative() and i == j){
           match[i] = j;
-          used.insert(j);
+          used.insert(j);        
         }
       }
     }
@@ -280,8 +249,7 @@ void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
           assert( Vfused->getType() == Vorig->getType() &&
               " Types differ, wrong merge" );
           SelI = Builder->CreateSelect(SelVal,Vorig,Vfused,"fuse.sel");
-          (*selMap)[cast<Instruction>(SelI)] = new set<BasicBlock*>;
-          (*selMap)[cast<Instruction>(SelI)]->insert(Iorig->getParent());
+          (*selMap)[cast<Instruction>(SelI)] = Iorig->getParent();
           Ifused->setOperand(i,SelI);
           used.insert(j);
         }
@@ -328,8 +296,7 @@ void FusedBB::secureMem(Value *SelVal, BasicBlock *destBB){
             SelSafe = builder.CreateSelect(SelVal,oPtr,G,"fuse.sel.safe"); 
         if(!SelSafe)
           SelSafe = builder.CreateSelect(SelVal,G,oPtr,"fuse.sel.safe");
-        (*selMap)[cast<Instruction>(SelSafe)] = new set<BasicBlock*>;
-        (*selMap)[cast<Instruction>(SelSafe)]->insert(destBB);
+        (*selMap)[cast<Instruction>(SelSafe)] = destBB;
         (*safeMemI)[&I] = 2;
         I.setOperand(index,SelSafe);          
       }
@@ -447,7 +414,7 @@ bool FusedBB::checkNoLoop(Instruction *Iref, Instruction *Isearch, BasicBlock *B
 }
 
 void FusedBB::mergeBB(BasicBlock *BB){
-  this->BB->setName(this->BB->getName()+BB->getName());
+  this->BB->setName(BB->getName()+this->BB->getName());
   IRBuilder<> builder(*Context);
   Value *SelVal = new Argument(builder.getInt1Ty(),"fuse.sel.arg");
   (*argsBB)[SelVal] = BB;
@@ -1053,7 +1020,7 @@ bool FusedBB::insertInlineCall(Function *F){
  * @param *M LLVM Module
  */
 
-void FusedBB::getMetrics(vector<double> *data, Module *M){
+void FusedBB::getMetrics(vector<float> *data, Module *M){
   MDNode *N;
 	DataLayout DL  = M->getDataLayout();
   float orig_inst = 0;
@@ -1070,7 +1037,7 @@ void FusedBB::getMetrics(vector<double> *data, Module *M){
   float power = 0;
   pair<float,float> crit_path = getCriticalPathCost(BB);
   for(auto I = BB->begin(); I != BB->end() ; ++I){
-    time += getSwDelay(&*I);
+    time += getDelay(&*I);
     if (isa<StoreInst>(I) or isa<LoadInst>(I)){
       if(isa<StoreInst>(I)){
         footprint += DL.getTypeSizeInBits(I->getOperand(0)->getType());
@@ -1201,7 +1168,7 @@ Function* FusedBB::createInline(Module *Mod){
 
 
   // Instantiate function
-  FunctionType *funcType = FunctionType::get(outStruct->getPointerTo(),
+  FunctionType *funcType = FunctionType::get(outStruct,
       ArrayRef<Type*>(inputTypes),false);
   Function *f = Function::Create(funcType,
       Function::ExternalLinkage,"inline_func",Mod);
@@ -1453,117 +1420,99 @@ int FusedBB::size(){
   return mergedBBs->size();
 }
 
-void traverseExclude(Instruction *I, set<Instruction*> *visited,
-    set<Instruction*> *excluded, list<Instruction*> *list){
-  if(!excluded->count(I)){
+void traverseExclude(Instruction *I, set<Instruction*> visited,
+    set<Instruction*> *excluded){
+  if(!excluded->count(I) and !visited->count(I)){
     excluded->insert(I);
-    auto it = find(list->begin(),list->end(),I);
-    if(it != list->end()){
-      list->erase(it);
-      auto it2 = find(visited->begin(),visited->end(),I);
-      visited->erase(it2);
-    }
-    //visited->insert(I);
     for(auto U : I->users()){
-      if(cast<Instruction>(U)->getParent() == I->getParent())
-        traverseExclude(cast<Instruction>(U),visited,excluded,list);
+      if(isa<Instruction>(U) and cast<Instruction>(U)->getParent() == I->getParent())
+        traverseExclude(cast<Instruction>(U),visited,excluded);
     }
   }
 }
 
 
-void FusedBB::traverseSubgraph(Instruction *I, set<Instruction*> *visited, 
-    set<Instruction*> *excluded, list<Instruction*> *list, vector<vector<double>*> *prebb, vector<BasicBlock*> *bblist, float cp, map<BasicBlock*,double> *tseq){
-  float cp_max = 1000000;
-  for(auto Il : *list)
-    if(fuseMap->count(I))
-      for(auto Ip : *(*fuseMap)[I])
-        if( tseq->count(Ip->getParent()) )
-          if( (*tseq)[Ip->getParent()] < cp_max )
-            cp_max =  (*tseq)[Ip->getParent()];
+void traverseSubgraph(Instruction *I, set<Instruction*> *visited, 
+    set<Instruction*> *excluded, list<Instruction*> *list){
 
-  // We remove here instructions on able to be handled by our substrate
-  if(isa<LoadInst>(I) or isa<StoreInst>(I) or isa<CallInst>(I) or
-      isa<InsertElementInst>(I) or isa<ExtractElementInst>(I) or
-      isa<ShuffleVectorInst>(I) or isa<InsertValueInst>(I) or
-      (visited->count(I) and find(list->begin(),list->end(),I) == list->end())){
-    visited->insert(I);
-    traverseExclude(I,visited,excluded,list);
-  }
-  else if(cp+getHwDelay(I) > cp_max){
-    traverseExclude(I,visited,excluded,list);
-  }
-  else if(!excluded->count(I) and !visited->count(I)){
+  if(!(isa<StoreInst>(I) or isa<LoadInst>(I) or isa<BranchInst>(I) or visited->count(I) or excluded->count(I))){
     visited->insert(I);
     list->push_back(I);
-    for(auto U : I->users())
-      if(cast<Instruction>(U)->getParent() == I->getParent())
-        traverseSubgraph(cast<Instruction>(U),visited,excluded,list,prebb,
-            bblist,cp+getHwDelay(I),tseq);
+    for(auto &Op : I->operands()){
+      if(isa<Instruction>(Op) and cast<Instruction>(Op)->getParent() == 
+          I->getParent())
+        traverseSubgraph(cast<Instruction>(Op),visited,list);
+    }
+    for(auto Us : I->users()){
+      if(isa<Instruction>(Us) and cast<Instruction>(Us)->getParent() ==
+          I->getParent())
+        traverseSubgraph(cast<Instruction>(Us),visited,list);
+    }
   }
-  
+  else{
+    tarverseExclude(I,visited,excluded);
+  }
+
   return;
 }
 
-void FusedBB::splitBB(vector<list<Instruction*> *> *subgraphs, vector<vector<double> *> *prebb, vector<BasicBlock*> *bblist){
+void FusedBB::splitBB(vector<list<Instruction*> *> *subgraphs){
   set<Instruction*> visited;
-  set<Instruction*> excluded;
-  map<BasicBlock*,double> tseq;
-  for(int i=0;i<bblist->size();i++){
-    tseq[(*bblist)[i]] = (*(*prebb)[i])[8];
-  }
 
-  while( visited.size() != this->BB->size() ){
-    subgraphs->push_back(new list<Instruction*>);
-    excluded.clear();
-    for(auto &I : *this->BB){
-      if(isa<SelectInst>(&I) and (I.getName() == "fuse.sel" or I.getName() == 
-            "fuse.sel.safe") and !excluded.count(&I))
-        visited.insert(&I);
-      else if(!visited.count(&I))
-        traverseSubgraph(&I,&visited,&excluded,(*subgraphs)[subgraphs->size()-1], prebb, bblist,0,&tseq);
-    }
-
-    // Compute Sequential Time of each BB involved
-    for(auto I: *(*subgraphs)[subgraphs->size()-1]){
-      if(fuseMap->count(I))
-        for( auto Iorig : *(*fuseMap)[I] )
-          tseq[Iorig->getParent()] -= getSwDelay(I);
-    }
-    
-    // Remove Leading or Trailing Selects
-    bool removed = true;
-    while(removed){
-      removed = false;
-      for(auto I = (*subgraphs)[subgraphs->size()-1]->begin();
-        I != (*subgraphs)[subgraphs->size()-1]->end();++I){
-        if(isa<SelectInst>(*I)){
-        bool nouse = true;
-        for(int i=0;i<(*I)->getNumOperands();++i)
-          for(auto O = (*subgraphs)[subgraphs->size()-1]->begin();
-                   O != (*subgraphs)[subgraphs->size()-1]->end();++O)
-            nouse &=  (*O) != (*I)->getOperand(i);
-            if(nouse){
-              (*subgraphs)[subgraphs->size()-1]->erase(I--);
-              removed = true;
-            }
-            if(!nouse){
-              nouse = true;
-              for(auto U : (*I)->users())
-                nouse &= find((*subgraphs)[subgraphs->size()-1]->begin(),
+  for(auto &I : *this->BB){
+    if(!visited.count(&I)){
+      subgraphs->push_back(new list<Instruction*>);
+      traverseSubgraph(&I,&visited,(*subgraphs)[subgraphs->size()-1]);
+      if((*subgraphs)[subgraphs->size()-1]->empty()){
+        delete (*subgraphs)[subgraphs->size()-1];
+        subgraphs->pop_back();
+      }
+      else{
+        bool removed = true;
+        while(removed){
+          removed = false;
+          for(auto I = (*subgraphs)[subgraphs->size()-1]->begin();
+              I != (*subgraphs)[subgraphs->size()-1]->end();++I){
+            if(isa<SelectInst>(*I)){
+              bool nouse = true;
+              for(int i=0;i<(*I)->getNumOperands();++i)
+                for(auto O = (*subgraphs)[subgraphs->size()-1]->begin();
+                    O != (*subgraphs)[subgraphs->size()-1]->end();++O)
+                    nouse &=  (*O) != (*I)->getOperand(i);
+              if(nouse){
+                (*subgraphs)[subgraphs->size()-1]->erase(I--);
+                removed = true;
+              }
+              if(!nouse){
+                nouse = true;
+                for(auto U : (*I)->users())
+                  nouse &= find((*subgraphs)[subgraphs->size()-1]->begin(),
                       (*subgraphs)[subgraphs->size()-1]->end(),(Instruction*)U)
                     == (*subgraphs)[subgraphs->size()-1]->end();
                 if(nouse){
                   (*subgraphs)[subgraphs->size()-1]->erase(I--);
                   removed = true;
                 }  
+              }
             }
           }
         }
       }
     }
+  }
+
+  /*for(auto List : subgraphs){
+    
+    for(auto I : List){
+
+    }
+  }*/
+
   return;
 }
+
+
+
 
 
 bool FusedBB::rCycleDetector(Instruction *I, set<Instruction*> *visited,
@@ -1619,39 +1568,13 @@ void FusedBB::fillSubgraphsBBs(Instruction *I,set<string>*subset){
 }
 
 
-float FusedBB::getTseqSubgraph(list<Instruction*> *subgraph, map<string,long> *iterMap, map<BasicBlock*,float> *tseq_block){
+float FusedBB::getTseqSubgraph(list<Instruction*> *subgraph, map<string,long> *iterMap){
   float tseq = 0;
   for(auto I=subgraph->begin();I!=subgraph->end();++I){
     if((*I)->getName().str().find("fuse.sel") == string::npos)
-      for(auto Iorig : *(*fuseMap)[*I]){
-        tseq += getSwDelay(*I)*((*iterMap)[Iorig->getParent()->getName().str()]);
-      if(!tseq_block->count(Iorig->getParent()))
-        (*tseq_block)[Iorig->getParent()] = 0;
-      (*tseq_block)[Iorig->getParent()] += getSwDelay(*I);
-        
-    }
+      for(auto Iorig : *(*fuseMap)[*I])
+        tseq += getDelay(*I)*((*iterMap)[Iorig->getParent()->getName().str()]);
   }
   return tseq;
 }
 
-
-void FusedBB::getDebugLoc(stringstream &output){
-  for (BasicBlock *BB : *mergedBBs){
-    output << BB->getParent()->getName().str() << ":\n";
-    errs() << BB->getName().str() << "\n";
-    for(auto &I : *BB){
-      DebugLoc DL = I.getDebugLoc();
-      if(DL){
-        DL.dump();
-        
-      }
-    }
-  }
-}
-
-void FusedBB::setOrigWeight(float orig_weight){
-  this->orig_weight = orig_weight;
-}
-float FusedBB::getOrigWeight(){
-  return this->orig_weight;
-}

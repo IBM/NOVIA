@@ -25,13 +25,19 @@ void separateBr(BasicBlock *BB){
     for(BasicBlock *pred : pred_list){
         Instruction *term = pred->getTerminator();
         if(isa<BranchInst>(term)){
-          BranchInst *termb = cast<BranchInst>(pred->getTerminator());
+          BranchInst *termb = cast<BranchInst>(term);
           for(int i = 0; i < termb->getNumSuccessors(); ++i)
             if(termb->getSuccessor(i) == BB)
               termb->setSuccessor(i,newBB);
         }
+        else if(isa<InvokeInst>(term)){
+          InvokeInst *termi = cast<InvokeInst>(term);
+          for(int i = 0; i < termi->getNumSuccessors(); ++i)
+            if(termi->getSuccessor(i) == BB)
+              termi->setSuccessor(i,newBB);
+        }
         else{
-          SwitchInst *terms = cast<SwitchInst>(pred->getTerminator());
+          SwitchInst *terms = cast<SwitchInst>(term);
           for(int i = 0; i < terms->getNumSuccessors(); ++i)
             if(terms->getSuccessor(i) == BB)
               terms->setSuccessor(i,newBB);
@@ -58,7 +64,7 @@ void separateBr(BasicBlock *BB){
       builder.CreateBr(newBB);
     }
   }
-  else if(isa<SwitchInst>(I)){
+  else if(isa<SwitchInst>(I) or isa<InvokeInst>(I)){
     if(isa<Instruction>(I->getOperand(0))){
       Instruction *Ipred = cast<Instruction>(I->getOperand(0));
       MDNode* temp = MDNode::get(BB->getContext(),ArrayRef<Metadata*>());
