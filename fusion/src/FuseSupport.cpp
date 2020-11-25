@@ -1,9 +1,10 @@
 #include "FuseSupport.hpp"
 
-pair<float,float> getSubgraphMetrics(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,
-    vector<float> *fused, FusedBB *candidate, map<string,double> *profileMap,
+pair<float,float> getSubgraphMetrics(vector<BasicBlock*> *bblist, vector<vector<double>*> *prebb,
+    vector<double> *fused, FusedBB *candidate, map<string,double> *profileMap,
     map<string,long> *iterMap,vector<list<Instruction*>*> *subgraphs,
-    vector<vector<float>*> *data,vector<float>*tseq_sub){
+    vector<vector<float>*> *data,vector<float>*tseq_sub, vector<
+    map<BasicBlock*,float>*> *tseqblock,vector<pair<float,float> >*areas){
 
   int count = 0;
   float acum_sub_area = 0;
@@ -18,25 +19,27 @@ pair<float,float> getSubgraphMetrics(vector<BasicBlock*> *bblist, vector<vector<
     map<Instruction*,float> visited;
     data->push_back(new vector<float>);
 
-    float tseq = candidate->getTseqSubgraph(v,iterMap);
+    tseqblock->push_back(new map<BasicBlock*,float>);
+    float tseq = candidate->getTseqSubgraph(v,iterMap,(*tseqblock)[tseqblock->size()-1]);
     tseq_sub->push_back(tseq);
 
     for(auto *I : *v)
       subset.insert(I);
 
     for(auto *I : *v){
-      if(!(isa<SelectInst>(I) and !subset.count((Instruction*)(I->getOperand(1))) 
-          and !subset.count((Instruction*)(I->getOperand(2))))){
+      //if(!(isa<SelectInst>(I) and !subset.count((Instruction*)(I->getOperand(1))) 
+      //    and !subset.count((Instruction*)(I->getOperand(2))))){
         sub_area += getArea(I);
         float imerges = candidate->getNumMerges(I);
         if(!isa<SelectInst>(I))
           orig_area += imerges?imerges*getArea(I):getArea(I);
         num_merges += imerges?1:0;
-        sub_tseq += getDelay(I);
-      }
+        sub_tseq += getSwDelay(I);
+      //}
       //sub_cp = dfsCritSub(I,*v,&visited);
     }
     (*data)[data->size()-1]->push_back(sub_area/orig_area);
+    areas->push_back(pair<float,float>(sub_area,orig_area));
     acum_sub_area += sub_area;
     acum_orig_area += orig_area;
     //errs() << "Subgraph " << count << ": " << num_merges << " " << sub_area/orig_area << "\n";
@@ -45,8 +48,8 @@ pair<float,float> getSubgraphMetrics(vector<BasicBlock*> *bblist, vector<vector<
   return pair<float,float>(acum_sub_area,acum_orig_area);
 }
 
-float getTseq(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,
-    vector<float> *fused, FusedBB *candidate, map<string,double> *profileMap,
+float getTseq(vector<BasicBlock*> *bblist, vector<vector<double>*> *prebb,
+    vector<double> *fused, FusedBB *candidate, map<string,double> *profileMap,
     map<string,long> *iterMap, set<string> *subset){
   float total_tseq = 0;
   float merged_iterations = 0;
@@ -56,7 +59,7 @@ float getTseq(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,
   float unmerged_weight = 0;
   float total_weight = 0;
   for(int i =0; i<prebb->size(); ++i){
-    if(subset->count((*bblist)[i]->getName().str())){
+    //if(subset->count((*bblist)[i]->getName().str())){
       long iterations = (*iterMap)[(*bblist)[i]->getName().str()];
       float weight = (*profileMap)[(*bblist)[i]->getName().str()];
       if(candidate->isMergedBB((*bblist)[i])){
@@ -70,14 +73,14 @@ float getTseq(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,
       }
       total_tseq += (*(*prebb)[i])[8] * iterations;
       total_weight += (*profileMap)[(*bblist)[i]->getName().str()];  
-    }
+    //}
   }
   return merged_tseq;
   
 }
 
-float getSpeedUp(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,
-    vector<float> *fused, FusedBB *candidate, map<string,double> *profileMap,
+float getSpeedUp(vector<BasicBlock*> *bblist, vector<vector<double>*> *prebb,
+    vector<double> *fused, FusedBB *candidate, map<string,double> *profileMap,
     map<string,long> *iterMap){
   float cp = (*fused)[11];
   float speedup = 0;
@@ -110,8 +113,8 @@ float getSpeedUp(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,
   return speedup;
 }
 
-float getWeight(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,
-    vector<float> *fused, FusedBB *candidate, map<string,double> *profileMap,
+float getWeight(vector<BasicBlock*> *bblist, vector<vector<double>*> *prebb,
+    vector<double> *fused, FusedBB *candidate, map<string,double> *profileMap,
     map<string,long> *iterMap){
   float merged_weight = 0;
   for(int i = 0; i < prebb->size() ; ++i){
@@ -121,8 +124,8 @@ float getWeight(vector<BasicBlock*> *bblist, vector<vector<float>*> *prebb,
   return merged_weight;
 }
 
-float getMerit(vector<BasicBlock*> *bblist,vector<vector<float>*> *prebb,
-    vector<float> *fused, FusedBB *candidate,map<string,double> *profileMap,
+float getMerit(vector<BasicBlock*> *bblist,vector<vector<double>*> *prebb,
+    vector<double> *fused, FusedBB *candidate,map<string,double> *profileMap,
     map<string,long> *iterMap){
   float merit = 0;
   float cp = (*fused)[11];
@@ -156,8 +159,8 @@ float getMerit(vector<BasicBlock*> *bblist,vector<vector<float>*> *prebb,
 
 }
 
-float getSavedArea(vector<BasicBlock*> *bblist,vector<vector<float>*> *prebb,
-    vector<float> *fused, FusedBB *candidate,map<string,double> *profileMap,
+float getSavedArea(vector<BasicBlock*> *bblist,vector<vector<double>*> *prebb,
+    vector<double> *fused, FusedBB *candidate,map<string,double> *profileMap,
     map<string,long> *iterMap){
   float tarea = 0;
   for(int i = 0; i < prebb->size(); ++i){
@@ -168,8 +171,8 @@ float getSavedArea(vector<BasicBlock*> *bblist,vector<vector<float>*> *prebb,
   return tarea - (*fused)[12];
 }
 
-float getRelativeSavedArea(vector<BasicBlock*> *bblist,vector<vector<float>*> *prebb,
-    vector<float> *fused, FusedBB *candidate,map<string,double> *profileMap,
+float getRelativeSavedArea(vector<BasicBlock*> *bblist,vector<vector<double>*> *prebb,
+    vector<double> *fused, FusedBB *candidate,map<string,double> *profileMap,
     map<string,long> *iterMap){
   float tarea = 0;
   for(int i = 0; i < prebb->size(); ++i){

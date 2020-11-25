@@ -5,6 +5,8 @@
 #include <map>
 #include <string>
 #include <algorithm>
+#include <string>
+#include <sstream>
 
 #include "../BBAnalysis.hpp"
 #include "../Maps.hpp"
@@ -36,12 +38,13 @@ class FusedBB{
     map<Instruction*,set<Instruction*>* > *rawDeps;
     //map<Instruction*,set<Instruction*>* > *warDeps;
     map<Instruction*,set<Instruction*>* > *fuseMap;
-    map<Instruction*,BasicBlock*> *selMap;
+    map<Instruction*,set<BasicBlock*>*> *selMap;
 
     // Stats & Analytics
     set<Instruction*> *annotInst;
     map<Instruction*,int> *countMerges;
     map<Instruction*,unsigned> *safeMemI;
+    float orig_weight;
 
     // Positions
     map<Value*,map<BasicBlock*,int>* > *liveInPos;
@@ -66,7 +69,9 @@ class FusedBB{
     void mergeOp(Instruction*, Instruction*,map<Value*,Value*> *,
         IRBuilder<>*,Value*,set<Value*>*);
     // spliters
-    void splitBB(vector<list<Instruction*> *> *);
+    void splitBB(vector<list<Instruction*> *> *,vector<vector<double>*>*, vector<BasicBlock*>*);
+void traverseSubgraph(Instruction*, set<Instruction*> *, 
+    set<Instruction*> *, list<Instruction*> *, vector<vector<double>*> *, vector<BasicBlock*> *, float , map<BasicBlock*,double> *);
     // enablers
     Function *createOffload(Module *);
     Function *createInline(Module *);
@@ -74,6 +79,8 @@ class FusedBB{
     bool insertInlineCall(Function *);
 
     // helpers
+    bool checkSelects(Value*,Value*,BasicBlock*,map<Value*,Value*>*,
+        set<Value*> *);
     bool searchDfs(Instruction*,Instruction*,set<Instruction*>*);
     bool checkNoLoop2(Instruction*,Instruction*,BasicBlock*,map<Value*,Value*>*);
     bool checkNoLoop(Instruction*,Instruction*,BasicBlock*);
@@ -96,9 +103,14 @@ class FusedBB{
     // info functions 
     void addMergedBB(BasicBlock *);
     void annotateMerge(Instruction*,Instruction*,BasicBlock*);
+    void getDebugLoc(stringstream&);
+    
+    // setter functions
+    void setOrigWeight(float);
 
     // getter funcionts
     int size();
+    float getOrigWeight();
     unsigned getNumMerges(Instruction*);
     unsigned getNumMerges();
     unsigned getMaxMerges();
@@ -106,9 +118,10 @@ class FusedBB{
     string getName();
     unsigned getStoreDomain(Instruction*,BasicBlock*);
     BasicBlock* getBB();
-    void getMetrics(vector<float>*,Module*);
+    void getMetrics(vector<double>*,Module*);
     void fillSubgraphsBBs(Instruction*,set<string>*);
-    float getTseqSubgraph(list<Instruction*> *, map<string,long> *);
+    float getTseqSubgraph(list<Instruction*> *, map<string,long> *, 
+        map<BasicBlock*,float> *);
     float getTseq();
   
     // Hardware

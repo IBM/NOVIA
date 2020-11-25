@@ -21,7 +21,7 @@ name_o="${name}_ins.o"
 name_ins_bin="${name}_ins.bin"
 
 LIBS="-lpython3.6m -lm -lomp -fopenmp -lFC"
-INLINE_STEPS=8
+INLINE_STEPS=0
 export LD_LIBRARY_PATH=/home/dtrilla/git/tmp/fc/build/lib:$LD_LIBRARY_PATH
 
 #set -x
@@ -101,6 +101,9 @@ fi
 
 echo "Processing Histogram"
 python $scriptDir/normalize.py histogram.txt weights.txt bblist.txt $3
+if [ $? -ne 0 ]; then
+  exit 1
+fi
 
 if [ $4 == "y" ]; then
   echo -n "Merging:"
