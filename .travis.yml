@@ -19,6 +19,7 @@ cache:
 
 before_install:
   - ./compile_llvm_minimal.sh
+  - ./compile_graphviz.sh
 
 install:
   - cd fusion
