@@ -10,8 +10,17 @@ addons:
       - cmake
       - gcc-7
 language: python
+
+cache:
+  apt: true
+  pip: true
+  directories:
+    - llvm-project
+
+before_install:
+  - ./compile_llvm_minimal.sh
+
 install:
-  - ./compile_llvm.sh
   - cd fusion
   - mkdir build
   - cd build
