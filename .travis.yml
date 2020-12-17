@@ -9,6 +9,7 @@ addons:
     packages:
       - cmake
       - gcc-7
+      - flex
 language: python
 
 cache:
@@ -16,6 +17,7 @@ cache:
   pip: true
   directories:
     - llvm-project
+    - graphviz
 
 before_install:
   - ./compile_llvm_minimal.sh
