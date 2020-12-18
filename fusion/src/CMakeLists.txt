@@ -10,7 +10,7 @@ add_library(instrumentlib SHARED
   instrumentLibraryPass.cpp)
 
 add_executable(proflib profileLibraryPass.cpp)
-target_compile_options(proflib PRIVATE -ggdb -O0)
+target_compile_options(proflib PRIVATE -ggdb -O0 -fPIC)
 
 #This is wrong but will work for now
 
