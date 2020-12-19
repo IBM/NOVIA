@@ -36,6 +36,7 @@ install:
   - mkdir build
   - cd build
   - source ../../env.sh
+  - PATH=${LLVM_BIN}:$PATH
   - cmake ../
   - make
 
