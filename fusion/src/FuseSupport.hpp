@@ -30,3 +30,5 @@ float getSavedArea(vector<BasicBlock*>*,vector<vector<double>*>*,vector<double> 
 float getRelativeSavedArea(vector<BasicBlock*>*,vector<vector<double>*>*,vector<double> *, FusedBB*,
     map<string,double>*,map<string,long>*);
 void readDynInfo(string, map<string,double>*, map<string,long>*);
+pair<float,float> BinPacking(map<FusedBB*,pair<float,float> >::iterator, 
+    map<FusedBB*,pair<float,float> >::iterator, float, float, float);

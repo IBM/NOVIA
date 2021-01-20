@@ -202,3 +202,23 @@ void readDynInfo(string filename, map<string,double>* profileMap,
     (*iterMap)[bb_name] = itervalue;
   }
 }
+
+pair<float,float> BinPacking(map<FusedBB*,pair<float,float> >::iterator it, 
+    map<FusedBB*,pair<float,float> >::iterator end, float area, float speedup,
+    float area_limit){
+  if ( it == end )
+    return pair<float,float>(area,speedup);
+  pair<float,float> with, without;
+  with.first = with.second = without.first = without.second = 0;
+  without = BinPacking(next(it),end,area,speedup,area_limit);
+  if(it->second.first + area <= area_limit)
+    with = BinPacking(next(it),end,area+it->second.first,
+        1/(1-((1-1/speedup)+(1-1/it->second.second))),area_limit);
+  if(with.second > without.second){
+    return with;
+  }
+  else{
+    return without;
+  }
+
+}

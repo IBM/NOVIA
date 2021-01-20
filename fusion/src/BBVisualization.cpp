@@ -10,6 +10,149 @@ string rgb2hex(int r, int g, int b, bool with_head) {
 }
 
 
+void drawBBGraph(BasicBlock *BB,char *file,string dir){
+  struct stat buffer;
+
+  if(dir.empty()){
+    errs() << "No visualization directory specified - assuming default\n";
+    dir = "imgs";
+  }
+  if(stat(dir.c_str(),&buffer)){
+    errs() << "Visualization directory does not exist - creating it...\n";
+    mkdir(dir.c_str(),S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+  }
+
+  GVC_t *gvc = gvContext();
+  Agraph_t *G = agopen((char*)BB->getName().take_front(10).str().c_str(),
+      Agstrictdirected, NULL);
+
+  Agnode_t *n, *m;
+  Agedge_t *e;
+  Agsym_t *a;
+
+  map<Value*,Agnode_t*> visited;
+  map<string,int> names;
+  string name;
+
+  // Add Nodes
+  bool first = true;
+  for(auto &I: *BB){
+    if(&I != BB->getTerminator()){
+      name = string(I.getOpcodeName());
+      if(names.count(name)){
+        names[name]++;
+        name = name+to_string(names[name]);
+      }
+      else{
+        names[name] = 0;
+      }
+  
+      n = agnode(G,(char*)name.c_str(),1);
+      visited.insert(pair<Value*,Agnode_t*>(&I,n));
+      agsafeset(n,(char*)"shape",(char*)"box",(char*)"");
+      //agsafeset(n,"fillcolor","skyblue","");
+      agsafeset(n,(char*)"fontsize",(char*)"24",(char*)"24");
+      agsafeset(n,(char*)"fontname",(char*)"helvetica::bold",(char*)"helvetica::bold");
+      
+      if(isa<StoreInst>(I) or isa<LoadInst>(I)){
+        agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
+        agsafeset(n,(char*)"fillcolor",(char*)"red",(char*)"white");
+        agsafeset(n,(char*)"fontcolor",(char*)"white",(char*)"black");
+      }
+    }
+  }
+
+  // Add Edges
+  for( auto &I : *BB ){
+    if(&I != BB->getTerminator()){
+      for(int i = 0; i < I.getNumOperands();++i){
+        Value *op = dyn_cast<Value>(I.getOperand(i));
+        ConstantInt *cint = dyn_cast<ConstantInt>(I.getOperand(i));
+        ConstantFP *cfp = dyn_cast<ConstantFP>(I.getOperand(i));
+        if(cint){
+          m = agnode(G,(char*)to_string(cint->getSExtValue()).c_str(),1);
+        }
+        else if(cfp){
+          double valued = cfp->getType()->isDoubleTy()? cfp->getValue().convertToDouble():
+            cfp->getValue().convertToFloat();
+          m = agnode(G,(char*)to_string(valued).c_str(),1);
+        }
+        else{
+          if(visited.count(op)){
+            m = visited[op];
+          }
+          else{
+            name = string(I.getOperand(i)->getName());
+            if(name == "")
+              name = "inVal";
+            if( name.find("fuse.sel.arg") == string::npos){
+              if(names.count(name)){
+                names[name]++;
+                name = name+to_string(names[name]);
+              }
+              else{
+                names[name] = 0;
+              }
+              m = agnode(G,(char*)name.c_str(),1);
+              agsafeset(m,(char*)"shape",(char*)"rarrow",(char*)"");
+              agsafeset(m,(char*)"style",(char*)"filled",(char*)"");
+              agsafeset(m,(char*)"color",(char*)"red",(char*)"");
+              agsafeset(m,(char*)"fillcolor",(char*)"#b19cd9",(char*)"white");
+              agsafeset(m,(char*)"fontcolor",(char*)"black",(char*)"black");
+              visited[op] = m;
+            }
+            else{
+              m = NULL;
+            }
+          }
+        }
+        n = visited[cast<Value>(&I)];
+        if(m)
+          agedge(G,m,n,NULL,1);
+      }  
+      // Get Live Outs
+      bool liveout = false;
+      Value *Uptr = NULL;
+      for(auto *U : I.users()){
+        Uptr = (Value*)U;
+        liveout = ((Instruction*)U)->getParent() != BB;
+        if(liveout)
+          break;
+      }
+      if(liveout){
+        if(visited.count(Uptr)){
+          m = visited[Uptr];
+        }
+        else{
+          name = "outVal";
+          if(names.count(name)){
+            names[name]++;
+            name = name+to_string(names[name]);
+          }
+          else{
+            names[name] = 0;
+          }
+          m = agnode(G,(char*)name.c_str(),1);
+          visited[Uptr] = m;
+          agsafeset(m,(char*)"shape",(char*)"larrow",(char*)"");
+          agsafeset(m,(char*)"style",(char*)"filled",(char*)"");
+          agsafeset(m,(char*)"color",(char*)"red",(char*)"");
+          agsafeset(m,(char*)"fillcolor",(char*)"#9932cc",(char*)"white");
+          agsafeset(m,(char*)"fontcolor",(char*)"white",(char*)"black");
+        }
+        agedge(G,n,m,NULL,1);
+      }
+    }
+  }
+
+  gvLayout(gvc,G,"dot");
+  gvRenderFilename(gvc,G,"png",string(dir+"/"+string(file)+".png").c_str());
+  gvFreeLayout(gvc,G);
+  agclose(G);
+  gvFreeContext(gvc);
+  return;
+}
+
 /*
  * Create a dot file symbolizing BB DFG
  *
@@ -70,6 +213,7 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
       agsafeset(n,(char*)"shape",(char*)"box",(char*)"");
       //agsafeset(n,"fillcolor","skyblue","");
       agsafeset(n,(char*)"fontsize",(char*)"24",(char*)"24");
+      agsafeset(n,(char*)"fontname",(char*)"helvetica::bold",(char*)"helvetica::bold");
       
       if(subgraphs and !isa<LoadInst>(I) and !isa<StoreInst>(I)){
         bool found = false;

@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <string>
 #include <sstream>
+#include <iostream>
+#include <fstream>
 
 #include "../BBAnalysis.hpp"
 #include "../Maps.hpp"
@@ -18,9 +20,38 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IR/CFG.h"
+#include "llvm/IR/DebugLoc.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
 #include "llvm/ADT/SetVector.h"
+
+//the following are UBUNTU/LINUX, and MacOS ONLY terminal color codes.
+#define RESET   "\033[0m"
+#define BLACK   "\033[30m"      /* Black */
+#define RED     "\033[31m"      /* Red */
+#define GREEN   "\033[32m"      /* Green */
+#define YELLOW  "\033[33m"      /* Yellow */
+#define BLUE    "\033[34m"      /* Blue */
+#define MAGENTA "\033[35m"      /* Magenta */
+#define CYAN    "\033[36m"      /* Cyan */
+#define WHITE   "\033[37m"      /* White */
+#define BOLDBLACK   "\033[1m\033[30m"      /* Bold Black */
+#define BOLDRED     "\033[1m\033[31m"      /* Bold Red */
+#define BOLDGREEN   "\033[1m\033[32m"      /* Bold Green */
+#define BOLDYELLOW  "\033[1m\033[33m"      /* Bold Yellow */
+#define BOLDBLUE    "\033[1m\033[34m"      /* Bold Blue */
+#define BOLDMAGENTA "\033[1m\033[35m"      /* Bold Magenta */
+#define BOLDCYAN    "\033[1m\033[36m"      /* Bold Cyan */
+#define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
+
+typedef struct {
+  int line;
+  int col;
+  bool merged;
+} debug_desc;
+  
+static bool operator< (const debug_desc &a, const debug_desc &b){ return a.line < b.line; }
 
 using namespace llvm;
 using namespace std;
@@ -30,27 +61,27 @@ class FusedBB{
     LLVMContext *Context;
     BasicBlock *BB;
     set<BasicBlock*> *mergedBBs; // What BB I merged
-    map<Instruction*,Instruction*> *LiveOut; // What LiveOuts are mapped
-    //map<Instruction*,Instruction*> LiveIn; // LiveIn mapping
-    map<Value*,BasicBlock*> *argsBB; // Selection value maping to BBs
-    map<Value*,set<pair<Value*,BasicBlock*> >* > *linkOps;
+    
     map<Instruction*,int> *storeDomain;
     map<Instruction*,set<Instruction*>* > *rawDeps;
     //map<Instruction*,set<Instruction*>* > *warDeps;
     map<Instruction*,set<Instruction*>* > *fuseMap;
-    map<Instruction*,set<BasicBlock*>*> *selMap;
+    map<Instruction*,pair<set<BasicBlock*>*,set<BasicBlock*>*> > *selMap;
 
     // Stats & Analytics
-    set<Instruction*> *annotInst;
+    //set<Instruction*> *annotInst;
     map<Instruction*,int> *countMerges;
     map<Instruction*,unsigned> *safeMemI;
     float orig_weight;
 
     // Positions
-    map<Value*,map<BasicBlock*,int>* > *liveInPos;
-    map<Value*,int> *liveOutPos;
-    //set<Value*> LiveOut;
+    vector<map<BasicBlock*,Value*>* > *liveInPos;
+    vector<map<BasicBlock*,set<Value*>*> * > *liveOutPos;
+    
+    // Live Values
+    map<Value*,set<pair<Value*,BasicBlock*> >* > *linkOps;
     set<Value*> *LiveIn;
+    set<Value*> *LiveOut; // What LiveOuts are mapped
   public:
     // constructor
     FusedBB();
@@ -69,18 +100,27 @@ class FusedBB{
     void mergeOp(Instruction*, Instruction*,map<Value*,Value*> *,
         IRBuilder<>*,Value*,set<Value*>*);
     // spliters
-    void splitBB(vector<list<Instruction*> *> *,vector<vector<double>*>*, vector<BasicBlock*>*);
-void traverseSubgraph(Instruction*, set<Instruction*> *, 
-    set<Instruction*> *, list<Instruction*> *, vector<vector<double>*> *, vector<BasicBlock*> *, float , map<BasicBlock*,double> *);
+    void splitBB(vector<list<Instruction*> *> *,vector<vector<double>*>*,
+        vector<BasicBlock*>*);
+    void traverseExclude(Instruction *I, set<Instruction*> *visited, 
+        set<Instruction*> *excluded, list<Instruction*> *list);
+    void traverseSubgraph(Instruction*, set<Instruction*> *, 
+    set<Instruction*> *, list<Instruction*> *, vector<vector<double>*> *,
+    vector<BasicBlock*> *, float , map<BasicBlock*,double> *);
     // enablers
     Function *createOffload(Module *);
     Function *createInline(Module *);
+    void inlineOutputSelects(SelectInst *,int);
+    void inlineInputSelects(SelectInst *,int);
     bool insertOffloadCall(Function *);
-    bool insertInlineCall(Function *);
+    bool insertInlineCall(Function *, map<Value*,Value*> *);
+    void removeOrigInst();
 
     // helpers
-    bool checkSelects(Value*,Value*,BasicBlock*,map<Value*,Value*>*,
-        set<Value*> *);
+    Value* searchSelects(Value*,Value*,Instruction*,Instruction*,
+        map<Value*,Value*> *,IRBuilder<>*,Value*);
+    bool checkSelects(Value*,Value*,BasicBlock*,map<Value*,Value*>*,set<Value*> *);
+    bool checkLinks(Value*,Value*,BasicBlock*);
     bool searchDfs(Instruction*,Instruction*,set<Instruction*>*);
     bool checkNoLoop2(Instruction*,Instruction*,BasicBlock*,map<Value*,Value*>*);
     bool checkNoLoop(Instruction*,Instruction*,BasicBlock*);

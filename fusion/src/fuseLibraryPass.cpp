@@ -29,6 +29,19 @@ static cl::opt<string> bbFileName("bbs",
     cl::desc("Specify file with BB names to merge"));
 static cl::opt<string> visualDir("graph_dir",
     cl::desc("Directory for graphviz files"),cl::Optional);
+static cl::opt<int> visLev("visualLevel",
+    cl::desc("Level of visualization output:\n"
+      "0: No visual output\n"
+      "1: Only Original BB DFGs\n"
+      "2: Only Merged BB DFGs\n"
+      "4: Only Split BB DFGs\n"
+      "3: Original and Merged BB DFGs\n"
+      "5: Original and Split BB DFGs\n"
+      "6: Merged and Split BB DFGs\n"
+      "7: All BB DFGs"),cl::Optional);
+static cl::opt<bool> debug("dbg",
+    cl::desc("Create bitcode with redundant original BBs to detect errors in"
+      " the inline/offload process"), cl::Optional);
 static cl::opt<string> dynamicInfoFile("dynInf",
     cl::desc("File with profiling information per BB"),cl::Optional);
 static cl::opt<string> excludeList("excl",
@@ -116,11 +129,15 @@ namespace {
             if( BB.getName() == bbs[i].first)
               bbs[i].second = &BB;
 
-      for(auto bb : bbs)
+      for(auto bb : bbs){
+        if(!visualDir.empty() and visLev&1)
+          drawBBGraph(bb.second,(char*)("o"+bb.second->getName().str()).c_str(),
+              visualDir);
         if(!bb.second){
           errs() << "Could not find BB: " << bb.first << "\n";
           exit(0);
         }
+      }
 
       for(int i = 0; i < bbs.size(); ++i){
         prebb.push_back(new vector<double>);
@@ -154,6 +171,7 @@ namespace {
       vector<pair<float,FusedBB*> > vCandidates;
       vector<BasicBlock*> unmergedBBs;
       float area_threshold = 10000000;
+      float area_core = 78609;
       vector<vector<vector<float> > > evol;
       bool go_hw = true;
 
@@ -206,14 +224,19 @@ namespace {
               float overhead_area = FusedBBs[i]->getAreaOverhead();
               merit = getMerit(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap,
                   &iterMap);
-              if( merit > max_merit)
+              if( saved_area > max_saved_area){
                 max_index = i;
-              else if ( merit == max_merit)
-                if( saved_area > max_saved_area)
+                max_merit = merit;
+                max_saved_area = saved_area;
+              }
+              else if ( saved_area == max_saved_area){
+                if( merit >= max_merit){
                   max_index = i;
-              //max_index = saved_area >= max_saved_area ? i: max_index;
-              max_merit = merit > max_merit? merit: max_merit;
-              max_saved_area = saved_area > max_saved_area? saved_area: max_saved_area;
+                  max_merit = merit;
+                  max_saved_area = saved_area;
+                }
+              }
+              
               evol[evol_index][i].push_back(saved_area);
               fused[i]->push_back(getWeight(&bbList,&prebb,fused[i],FusedBBs[i],
                     &profileMap,&iterMap));
@@ -236,8 +259,10 @@ namespace {
           for(int i = 0; i < FusedBBs.size();++i){
             if(fused_index[i]){
               //last_merit = i == max_index? (*fused[i])[fused[i]->size()-1]:last_merit;
-              if( (*fused[i])[fused[i]->size()-1] < last_merit or i != max_index){// or 
-//                  (*fused[i])[fused[i]->size()-7] < 0){
+
+              if( (i != max_index 
+                  or (*fused[i])[fused[i]->size()-1] < 0 
+                  or (*fused[i])[fused[i]->size()-7] < 0 ) and !(i == max_index and force)){
                 delete FusedBBs[i];
                 deleted++;
               }  
@@ -258,8 +283,6 @@ namespace {
             candidate = FusedBBs[max_index];
             last_merit = (*fused[max_index])[fused[max_index]->size()-1];
             fused_index[max_index] = false;
-            if(!visualDir.empty() and 0)
-              drawBBGraph(candidate,(char*)candidate->getName().c_str(),visualDir);
             unmergedBBs.erase(unmergedBBs.begin()+index_map[max_index]);
             vCandidates.push_back(pair<float,FusedBB*>(max_saved_area,candidate));
           }
@@ -354,6 +377,7 @@ namespace {
         float total_time = 1;
         int total_subgraphs = 0;
         stats.flush(); // Flush buffer before dangerous operations
+        map<FusedBB*,pair<float,float> > FusedResults;
         for(int spl=0;spl<vCandidates.size();++spl){
           vector<list<Instruction*>*> subgraphs;
           vCandidates[spl].second->splitBB(&subgraphs,&prebb,&bbList);
@@ -366,14 +390,14 @@ namespace {
           vector<pair<float,float> > tmp_areas;
           vector<float> tseq_sub;
           vector<map<BasicBlock*,float>*> tseq_block_aux;
+          map<Value*,Value*> VMap;
           getSubgraphMetrics(&bbList,&prebb,NULL,vCandidates[spl].second,
               &profileMap,&iterMap,&subgraphs,&data,&tseq_sub,&tseq_block_aux,&tmp_areas);
 
-          if(!visualDir.empty() and 0)
+          if(!visualDir.empty() and visLev&2)
             drawBBGraph(vCandidates[spl].second,(char*)(vCandidates[spl]
                 .second->getName()).c_str(),visualDir,
                 &subgraphs);
-          //errs() << vCandidates[spl].second->getName() << "\n";
           
           for(int i=0;i<subgraphs.size();++i){
             if(subgraphs[i]->size() > 0){
@@ -410,10 +434,10 @@ namespace {
                 exit(1);
               }
 
-              if((*data[i])[0] < 1 and sub_speed > 1){
+              if(((*data[i])[0] <= 1 and sub_speed > 1) or force){
                 Function *fSpl = splitBB->createInline(&M);
-                //splitBB->insertInlineCall(fSpl);
-                //splitBB->getDebugLoc(debug_log);
+                splitBB->insertInlineCall(fSpl,&VMap);
+                splitBB->getDebugLoc(debug_log);
                 acum_sub_area += tmp_areas[i].first;
                 acum_orig_area += tmp_areas[i].second;
                 acum_sub_time += 1-1/sub_speed;
@@ -423,7 +447,7 @@ namespace {
                 for(auto name: subset){
                   list_bbs[list_bbs.size()-1].push_back(name);
                 }
-                if(!visualDir.empty())
+                if(!visualDir.empty() and visLev&4)
                   drawBBGraph(splitBB,(char*)to_string(spl*100+i).c_str(),visualDir);
                   //drawBBGraph(splitBB,(char*)splitBB->getName().c_str(),visualDir);
                 total_subgraphs++;
@@ -434,6 +458,8 @@ namespace {
                     std::setw(5) << elem.second << ",";
                 }
                 tseq_block << "\n";
+              
+                FusedResults[splitBB] = pair<float,float>(vs[12],sub_speed);
               }
               else{
                 delete splitBB;
@@ -450,12 +476,14 @@ namespace {
               data[i]->push_back(tseq_sub[i]/vs[11]*iterations); // SpeedUp Relative to BB
               data[i]->push_back(orig_weight);
               data[i]->push_back(spl);
+
+
               }
             }
 
             int x = 0;
             for(auto elem : data){
-              if((*elem)[0] < 1 and (*elem)[2] > 1){
+              if((*elem)[0] <= 1 and (*elem)[2] > 1){
                 stats << list_bbs[num_candidates+x][0];
                 /*for(int l = 1; l < list_bbs[num_candidates+x].size(); ++l)
                   stats << list_bbs[num_candidates+x][l];
@@ -488,22 +516,44 @@ namespace {
           stats << "\n";
           count++;
         }
+        for(auto E : FusedResults)
+          E.first->removeOrigInst();
+
         stats << "\n";
         stats << "TseqBlocks\n";
         stats << tseq_block.str() << "\n";
-      
-
 
         stats << "\n";
         stats << "TotalAreaSavings,";
         stats << acum_sub_area/acum_orig_area << "\n";
         stats << "TotalSpeedUp,";
         stats << 1/(1-acum_sub_time) << "\n";
+        
+        
+        pair<float,float> bestBin = BinPacking(FusedResults.begin(),
+            FusedResults.end(),0,1,area_core*0.05);
+
+        stats << "TotalSpeedUpPerCoreThreshold,";
+        stats << bestBin.second << "\n";
+        stats << "TotalAreaPerCoreThreshold,";
+        stats << bestBin.first/area_core << "\n";
+
+        raw_fd_ostream debuglog("source.log",EC);
+        debuglog << debug_log.str() << "\n";
+        
 
         ////////////////////////
 				//vCandidates[0].second->insertOffloadCall(Foff,&bbList);
         //vCandidates.erase(vCandidates.begin());
 			}
+
+      set<BasicBlock*> visited;
+      for(auto E : vCandidates)
+        for(auto BB : bbs)
+          if(E.second->isMergedBB(BB.second) and !visited.count(BB.second)){
+            KahnSort(BB.second);
+            visited.insert(BB.second);
+          }
      
       for(auto E : vCandidates) 
         delete E.second;

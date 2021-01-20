@@ -98,12 +98,12 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
  *
  * @param *BB The BasicBlock to analyze
  * @param *RAWdeps Map with a relation of dependences (TODO: deprecate this)
- * @param &Context The LLVM Context
  */
-void memRAWDepAnalysis(BasicBlock *BB, map<Value*,Value*> *RAWdeps, LLVMContext &Context){
+void memRAWDepAnalysis(BasicBlock *BB, map<Instruction*,set<Instruction*> *> *rawDeps){
   StoreInst *St;
   LoadInst *Ld;
   map<Value*,Instruction*> Wdeps;
+  map<Instruction*,int> storeDomain;
   map<Value*,int> StoreDomain;
   for (auto &I : *BB){
     // For each store, we record the address being used
@@ -113,23 +113,14 @@ void memRAWDepAnalysis(BasicBlock *BB, map<Value*,Value*> *RAWdeps, LLVMContext 
       else
         StoreDomain[St->getPointerOperand()] = 1;
       Wdeps[St->getPointerOperand()] = &I;
-      MDNode* StoreDom = MDNode::get(Context,ConstantAsMetadata::get(
-              ConstantInt::get(Context,APInt(64,StoreDomain[St->getPointerOperand()],false))));
-      St->setMetadata("fuse.storedomain",StoreDom);
+      storeDomain[&I] = StoreDomain[St->getPointerOperand()];
     }
     // If a Load has de same address as a store, we annotate the dependence
     if(Ld = dyn_cast<LoadInst>(&I)){
       if(Wdeps.count(Ld->getPointerOperand())){
-        RAWdeps->insert(pair<Value*,Value*>(Ld,Wdeps[Ld->getPointerOperand()]));
-	      SmallVector<Metadata*,32> Ops;
-        Ops.push_back(ValueAsMetadata::get(Ld));
-        MDNode *N = MDTuple::get(Context,Ops);
-        Wdeps[Ld->getPointerOperand()]->setMetadata("fuse.rawdep",N);
-        
-        //Ops.clear();
-        //Ops.push_back(ValueAsMetadata::get(Wdeps[Ld->getPointerOperand()])); 
-        //N = MDTuple::get(Context,Ops);
-        //Ld->setMetadata("fuse.wardep",N);
+        if(!rawDeps->count(Wdeps[Ld->getPointerOperand()]))
+          (*rawDeps)[Wdeps[Ld->getPointerOperand()]] = new set<Instruction*>;
+        (*rawDeps)[Wdeps[Ld->getPointerOperand()]]->insert(&I);
       }
     }
   }
