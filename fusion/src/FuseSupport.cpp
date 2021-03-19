@@ -203,13 +203,18 @@ void readDynInfo(string filename, map<string,double>* profileMap,
   }
 }
 
-pair<float,float> BinPacking(map<FusedBB*,pair<float,float> >::iterator it, 
-    map<FusedBB*,pair<float,float> >::iterator end, float area, float speedup,
+bool mysort(pair<FusedBB*,pair<float,float> >& it1, 
+    pair<FusedBB*,pair<float,float> >& it2){
+  return it1.second.first < it2.second.first;
+}
+
+pair<float,float> BinPacking(vector<pair<FusedBB*,pair<float,float> > >::iterator it, 
+    vector<pair<FusedBB*,pair<float,float> > >::iterator end, float area, float speedup,
     float area_limit){
-  if ( it == end )
+  if ( it == end or area > area_limit)
     return pair<float,float>(area,speedup);
   pair<float,float> with, without;
-  with.first = with.second = without.first = without.second = 0;
+  with.first = with.second = without.first = without.second = 0;  
   without = BinPacking(next(it),end,area,speedup,area_limit);
   if(it->second.first + area <= area_limit)
     with = BinPacking(next(it),end,area+it->second.first,

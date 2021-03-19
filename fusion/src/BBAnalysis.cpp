@@ -37,7 +37,7 @@ bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B,
   if(SubOp->count(opB)){
     sameOpAfterMerge = opA == (*SubOp)[opB];
   }
-	return (sameValue and isConstant) or (isSameType and isLiveIn and !isConstant) or (isSameType and isInstMerg and !isConstant and sameOpAfterMerge);
+	return (sameValue and isConstant) or (isSameType and isLiveIn) or (isSameType and isInstMerg and !isConstant and sameOpAfterMerge);
 }
 
 /**
@@ -146,7 +146,7 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
     for(int i = 0; i < I.getNumOperands(); ++i){
       Value *V = I.getOperand(i);
       if(isa<Instruction>(V) && cast<Instruction>(V)->getParent() != &BB or
-          isa<Argument>(V))
+          isa<Argument>(V) or isa<GlobalValue>(V))
         LiveIn->insert(V);
     }
     for(auto U : I.users()){

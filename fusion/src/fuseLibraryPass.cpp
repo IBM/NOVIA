@@ -370,6 +370,12 @@ namespace {
         vector<vector<string> > list_bbs;
         stringstream tseq_block;
         stringstream debug_log;
+        stringstream overhead_log;
+        overhead_log << "BB,AvgIns,AvgOuts\n";
+        float total_invokes = 0;
+        float total_ins = 0;
+        float total_outs = 0;
+
         int num_candidates = 0;
         float acum_sub_area = 0;
         float acum_orig_area = 0;
@@ -377,7 +383,7 @@ namespace {
         float total_time = 1;
         int total_subgraphs = 0;
         stats.flush(); // Flush buffer before dangerous operations
-        map<FusedBB*,pair<float,float> > FusedResults;
+        vector<pair<FusedBB*,pair<float,float> > > FusedResults;
         for(int spl=0;spl<vCandidates.size();++spl){
           vector<list<Instruction*>*> subgraphs;
           vCandidates[spl].second->splitBB(&subgraphs,&prebb,&bbList);
@@ -431,12 +437,13 @@ namespace {
               if(new_weight > orig_weight){
                 errs() << "ERROR:\n";
                 errs() << tseq_sub[i] << " " << orig_tseq << " " << i << bbList[i]->getName() << "\n";
-                exit(1);
+                //exit(1);
               }
 
-              if(((*data[i])[0] <= 1 and sub_speed > 1) or force){
-                Function *fSpl = splitBB->createInline(&M);
-                splitBB->insertInlineCall(fSpl,&VMap);
+              if(((*data[i])[0] < 1 and sub_speed > 1) or force){
+                Function *fSpl;
+                fSpl = splitBB->createInline(&M);
+                //splitBB->insertInlineCall(fSpl,&VMap);
                 splitBB->getDebugLoc(debug_log);
                 acum_sub_area += tmp_areas[i].first;
                 acum_orig_area += tmp_areas[i].second;
@@ -452,14 +459,25 @@ namespace {
                   //drawBBGraph(splitBB,(char*)splitBB->getName().c_str(),visualDir);
                 total_subgraphs++;
               
+                // Stats for partial sequential times of inlined BBs
                 tseq_block << splitBB->getName() << ",";
                 for(auto elem : *tseq_block_aux[i]){
                   tseq_block << elem.first->getName().str() << "," << 
                     std::setw(5) << elem.second << ",";
                 }
                 tseq_block << "\n";
+
+                // Stats for software overheads
+                pair<float,pair<float,float> > auxO = splitBB->overheadCosts(&iterMap);
+                overhead_log << splitBB->getName() << "," << 
+                  auxO.second.first/auxO.first << "," << 
+                  auxO.second.second/auxO.first << "\n";
+                total_invokes += auxO.first;
+                total_ins += auxO.second.first;
+                total_outs += auxO.second.second;
               
-                FusedResults[splitBB] = pair<float,float>(vs[12],sub_speed);
+                FusedResults.push_back(pair<FusedBB*,pair<float,float> >(splitBB,
+                      pair<float,float>(vs[12],sub_speed)));
               }
               else{
                 delete splitBB;
@@ -483,7 +501,7 @@ namespace {
 
             int x = 0;
             for(auto elem : data){
-              if((*elem)[0] <= 1 and (*elem)[2] > 1){
+              if((*elem)[0] < 1 and (*elem)[2] > 1){
                 stats << list_bbs[num_candidates+x][0];
                 /*for(int l = 1; l < list_bbs[num_candidates+x].size(); ++l)
                   stats << list_bbs[num_candidates+x][l];
@@ -524,20 +542,64 @@ namespace {
         stats << tseq_block.str() << "\n";
 
         stats << "\n";
+        stats <<"Software Overhead\n";
+        stats << overhead_log.str();
+        stats << "AvgTotal," << total_ins/total_invokes << "," << 
+          total_outs/total_invokes << "\n";
+
+        stats << "\n";
         stats << "TotalAreaSavings,";
         stats << acum_sub_area/acum_orig_area << "\n";
         stats << "TotalSpeedUp,";
         stats << 1/(1-acum_sub_time) << "\n";
         
         
-        pair<float,float> bestBin = BinPacking(FusedResults.begin(),
-            FusedResults.end(),0,1,area_core*0.05);
+        for(auto it = FusedResults.begin(); it != FusedResults.end();)
+          if(it->second.second < 1.001)
+            FusedResults.erase(it);
+          else
+            ++it;
 
-        stats << "TotalSpeedUpPerCoreThreshold,";
-        stats << bestBin.second << "\n";
-        stats << "TotalAreaPerCoreThreshold,";
-        stats << bestBin.first/area_core << "\n";
+        std::sort(FusedResults.begin(),FusedResults.end(),mysort);
 
+        int thld = 0;
+        while(thld < FusedResults.size() and FusedResults[thld].second.first <= 
+            area_core*0.05)
+          thld++;
+
+        pair<float,float> bestBin5 = BinPacking(FusedResults.begin(),
+            FusedResults.begin()+thld,0,1,area_core*0.05);
+        stats << "TotalSpeedUpPerCoreThreshold5,";
+        stats << bestBin5.second << "\n";
+        stats << "TotalAreaPerCoreThreshold5,";
+        stats << bestBin5.first/area_core << "\n";
+        stats.flush(); // Flush buffer before dangerous operations
+
+        thld = 0;
+        while(thld < FusedResults.size() and FusedResults[thld].second.first <=
+            area_core*0.1)
+          thld++;
+        pair<float,float> bestBin10 = BinPacking(FusedResults.begin(),
+            FusedResults.begin()+thld,0,1,area_core*0.1);
+        stats << "TotalSpeedUpPerCoreThreshold10,";
+        stats << bestBin10.second << "\n";
+        stats << "TotalAreaPerCoreThreshold10,";
+        stats << bestBin10.first/area_core << "\n";
+        stats.flush(); // Flush buffer before dangerous operations
+
+        thld = 0;
+        while(thld < FusedResults.size() and FusedResults[thld].second.first <= 
+            area_core*0.2)
+          thld++;
+        pair<float,float> bestBin20 = BinPacking(FusedResults.begin(),
+            FusedResults.begin()+thld,0,1,area_core*0.2);
+        stats << "TotalSpeedUpPerCoreThreshold20,";
+        stats << bestBin20.second << "\n";
+        stats << "TotalAreaPerCoreThreshold20,";
+        stats << bestBin20.first/area_core << "\n";
+        stats.flush(); // Flush buffer before dangerous operations
+
+        
         raw_fd_ostream debuglog("source.log",EC);
         debuglog << debug_log.str() << "\n";
         

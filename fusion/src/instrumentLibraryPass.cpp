@@ -57,7 +57,7 @@ namespace {
             int num_phis = 0;
             for(auto &phi : BB.phis())
               num_phis++;
-            if( BB.size()-num_phis > 4 and !BB.isLandingPad()){
+            if( BB.size()-num_phis > 2 and !BB.isLandingPad()){
               vector<Value*> CallVals;
               tableGV[&BB] = new GlobalVariable(M,Builder.getInt64Ty(),false,
                   GlobalValue::ExternalLinkage,
@@ -117,10 +117,11 @@ namespace {
           Builder.getInt8PtrTy()});
       FunctionType *sprintfTy = FunctionType::get(Builder.getInt32Ty(),
           sprintfArgsTypes,true);
-      vector<Type*> writeArgsTypes({Builder.getInt32Ty(),
-          Builder.getInt8PtrTy(),Builder.getInt64Ty()});
-      FunctionType *writeTy = FunctionType::get(Builder.getInt64Ty(),
-          writeArgsTypes,false);
+      //vector<Type*> writeArgsTypes({Builder.getInt32Ty(),
+      //    Builder.getInt8PtrTy(),Builder.getInt64Ty()});
+      vector<Type*> writeArgsTypes;
+      FunctionType *writeTy = FunctionType::get(Builder.getInt32Ty(),
+          writeArgsTypes,true);
 
       Function *open = cast<Function>(M.getOrInsertFunction("open",openTy)
           .getCallee());

@@ -119,12 +119,12 @@ class FusedBB{
     // helpers
     Value* searchSelects(Value*,Value*,Instruction*,Instruction*,
         map<Value*,Value*> *,IRBuilder<>*,Value*);
-    bool checkSelects(Value*,Value*,BasicBlock*,map<Value*,Value*>*,set<Value*> *);
+    Value* checkSelects(Value*,Value*,BasicBlock*,map<Value*,Value*>*,set<Value*> *);
     bool checkLinks(Value*,Value*,BasicBlock*);
     bool searchDfs(Instruction*,Instruction*,set<Instruction*>*);
     bool checkNoLoop2(Instruction*,Instruction*,BasicBlock*,map<Value*,Value*>*);
     bool checkNoLoop(Instruction*,Instruction*,BasicBlock*);
-    void secureMem(Value*,BasicBlock*);
+    void secureMem(Value*,BasicBlock*,set<Value*>*);
     void KahnSort(); 
     void dropSafety(Instruction*);
     void addSafety(Instruction*);
@@ -144,6 +144,7 @@ class FusedBB{
     void addMergedBB(BasicBlock *);
     void annotateMerge(Instruction*,Instruction*,BasicBlock*);
     void getDebugLoc(stringstream&);
+    string getSelBB(Instruction*,Value*);
     
     // setter functions
     void setOrigWeight(float);
@@ -163,7 +164,8 @@ class FusedBB{
     float getTseqSubgraph(list<Instruction*> *, map<string,long> *, 
         map<BasicBlock*,float> *);
     float getTseq();
-  
+    //Stats
+    pair<float,pair<float,float> > overheadCosts(map<string,long> *);
     // Hardware
     //bool getVerilog(raw_fd_stream&);
 

@@ -236,7 +236,7 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
         agsafeset(n,(char*)"fillcolor",(char*)"red",(char*)"white");
         agsafeset(n,(char*)"fontcolor",(char*)"white",(char*)"black");
       }
-      else if(isa<SelectInst>(I)){
+      else if(I.getName() == "fuse.sel" or I.getName() == "fuse.sel.safe"){
         agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
         agsafeset(n,(char*)"fillcolor",(char*)"#ffd700",(char*)"white");
         agsafeset(n,(char*)"fontcolor",(char*)"black",(char*)"black");
@@ -292,8 +292,13 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
           }
         }
         n = visited[cast<Value>(&I)];
-        if(m)
-          agedge(G,m,n,NULL,1);
+        if(m){
+          e = agedge(G,m,n,NULL,1);
+          if(I.getName() == "fuse.sel" or I.getName() == "fuse.sel.safe"){
+            string bbs = fBB->getSelBB(&I,op);
+            agsafeset(e,(char*)"label",(char*)bbs.c_str(),(char*)"");
+          }  
+        }
       }  
       // Get Live Outs
       bool liveout = false;
