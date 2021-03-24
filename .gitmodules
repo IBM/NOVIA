@@ -1,6 +1,6 @@
 [submodule "llvm-project"]
 	path = llvm-project
-	url = https://github.com/llvm/llvm-project.git
+  url = https://github.ibm.com/david-trilla/crucible.git
 [submodule "graphviz"]
 	path = graphviz
 	url = https://gitlab.com/graphviz/graphviz.git
