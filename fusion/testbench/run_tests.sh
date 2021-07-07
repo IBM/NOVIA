@@ -5,3 +5,4 @@
 (cd deploop && ./test.sh)
 (cd storeorder  && ./test.sh)
 (cd incremental  && ./test.sh)
+(cd loops_test  && ./test.sh)

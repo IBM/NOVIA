@@ -12,6 +12,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Analysis/DDG.h"
 #include "llvm/ADT/DirectedGraph.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
@@ -26,5 +27,5 @@
 using namespace llvm;
 using namespace std;
 
-void drawBBGraph(FusedBB*,char*,string,
-    vector<list<Instruction*>*>* subgraphs = NULL);
+void drawBBGraph(BasicBlock*,char*,string);
+void drawBBGraph(FusedBB*,char*,string,vector<list<Instruction*>*>* subgraphs = NULL);

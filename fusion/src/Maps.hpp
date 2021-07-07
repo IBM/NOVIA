@@ -3,75 +3,28 @@
 using namespace std;
 using namespace llvm;
 
-// Weight Delay model taken from Region Seeker - Giorgios et al. in nS
-static map<unsigned,float> delay = {
-  {Instruction::Br,0.001},
-  {Instruction::Add,0.92},
-  {Instruction::Sub,0.92},
-  {Instruction::Mul,1},
-  {Instruction::UDiv,3.76},
-  {Instruction::SDiv,3.76},
-  {Instruction::URem,4.04},
-  {Instruction::SRem,4.04},
-  {Instruction::Shl,0.71},
-  {Instruction::LShr,0.73},
-  {Instruction::AShr,0.65},
-  {Instruction::And,0.02},
-  {Instruction::Or,0.03},
-  {Instruction::Xor,0.03},
-  {Instruction::Select,0.23},
-  {Instruction::ICmp,0.15},
-  {Instruction::FCmp,0.15},
-  {Instruction::ZExt,0.01},
-  {Instruction::SExt,0.01},
-  {Instruction::FPToUI,0.01},
-  {Instruction::FPToSI,0.01},
-  {Instruction::FPExt,0.01},
-  {Instruction::PtrToInt,0.01},
-  {Instruction::IntToPtr,0.01},
-  {Instruction::SIToFP,0.01},
-  {Instruction::UIToFP,0.01},
-  {Instruction::Trunc,0.01},
-  {Instruction::FPTrunc,0.01},
-  {Instruction::BitCast,0.01},
-  {Instruction::Load,1},
-  {Instruction::Store,1},
-  {Instruction::GetElementPtr,1.92},
-  {Instruction::Alloca,0.01},
-  {Instruction::PHI,0.23},
-  {Instruction::Call,0.01},
-  {Instruction::Switch,0.23},
-  {Instruction::Ret,0.01},
-  {Instruction::FNeg,0.92},
-  {Instruction::FAdd,0.92},
-  {Instruction::FSub,0.92},
-  {Instruction::FMul,1},
-  {Instruction::FDiv,3.76},
-  {Instruction::FRem,4.04},
-  {Instruction::ShuffleVector,4.04},
-  {Instruction::ExtractElement,4.04},
-  {Instruction::InsertElement,0.92}
-};
+#define CORE_FREQ 78000000// Core frequency in Hz
 
-// Weight model taken from Region Seeker by Gioergios et al. in uM^2
-static map<unsigned,int> area = {
-  {Instruction::Br,1},
-  {Instruction::Add,160},
-  {Instruction::Sub,173},
-  {Instruction::Mul,2275},
-  {Instruction::UDiv,16114},
-  {Instruction::SDiv,16114},
-  {Instruction::URem,17298},
-  {Instruction::SRem,17298},
-  {Instruction::Shl,187},
-  {Instruction::LShr,187},
-  {Instruction::AShr,311},
-  {Instruction::And,26},
-  {Instruction::Or,26},
-  {Instruction::Xor,40},
-  {Instruction::Select,40},
-  {Instruction::ICmp,78},
-  {Instruction::FCmp,78},
+// Delay for operation in cycles
+// Setting it to 1 cycle
+static map<unsigned, unsigned> swdelay = {
+  {Instruction::Br,0},
+  {Instruction::Add,1},
+  {Instruction::Sub,1},
+  {Instruction::Mul,1},
+  {Instruction::UDiv,1},
+  {Instruction::SDiv,1},
+  {Instruction::URem,1},
+  {Instruction::SRem,1},
+  {Instruction::Shl,1},
+  {Instruction::LShr,1},
+  {Instruction::AShr,1},
+  {Instruction::And,1},
+  {Instruction::Or,1},
+  {Instruction::Xor,1},
+  {Instruction::Select,1},
+  {Instruction::ICmp,1},
+  {Instruction::FCmp,1},
   {Instruction::ZExt,1},
   {Instruction::SExt,1},
   {Instruction::FPToUI,1},
@@ -88,19 +41,125 @@ static map<unsigned,int> area = {
   {Instruction::Store,1},
   {Instruction::GetElementPtr,1},
   {Instruction::Alloca,1},
-  {Instruction::PHI,40},
+  {Instruction::PHI,1},
   {Instruction::Call,1},
-  {Instruction::Switch,40},
+  {Instruction::Invoke,1},
+  {Instruction::Switch,0},
+  {Instruction::Ret,0},
+  {Instruction::FNeg,1},
+  {Instruction::FAdd,1},
+  {Instruction::FSub,1},
+  {Instruction::FMul,1},
+  {Instruction::FDiv,1},
+  {Instruction::FRem,1},
+  {Instruction::ShuffleVector,1},
+  {Instruction::ExtractElement,1},
+  {Instruction::InsertElement,1},
+  {Instruction::InsertValue,1}
+};
+
+// Weight Delay model taken from Region Seeker - Giorgios et al. in nS
+static map<unsigned,double> hwdelay = {
+  {Instruction::Br,0.0001},
+  {Instruction::Add,1.514}, //HLS
+  {Instruction::Sub,1.514}, // HLS
+  {Instruction::Mul,6.282}, //HLS
+  {Instruction::UDiv,74.69}, // HLS more than 1 cycle (35)
+  {Instruction::SDiv,74.69}, //HLS more than 1 cycle (35)
+  {Instruction::URem,74.69}, // HLS more than 1 cycle (35)
+  {Instruction::SRem,74.69}, // HLS more than 1 cycle (35)
+  {Instruction::Shl,1.89}, //HLS
+  {Instruction::LShr,1.89},
+  {Instruction::AShr,1.89}, //HLS
+  {Instruction::And,0.521}, //HLS
+  {Instruction::Or,0.521}, //HLS
+  {Instruction::Xor,0.521}, //HLS
+  {Instruction::Select,0.87}, //HLS
+  {Instruction::ICmp,1.26}, //HLS
+  {Instruction::FCmp,12.25}, //HLS
+  {Instruction::ZExt,0},//HLS
+  {Instruction::SExt,0},//HLS
+  {Instruction::FPToUI,3.693},//HLS
+  {Instruction::FPToSI,6.077},//HLS
+  {Instruction::FPExt,10.315},//HLS
+  {Instruction::PtrToInt,0.01},
+  {Instruction::IntToPtr,0.01},
+  {Instruction::SIToFP,39.785},//HLS
+  {Instruction::UIToFP,39.785},//HLS
+  {Instruction::Trunc,0},//HLS
+  {Instruction::FPTrunc,12.895},//HLS
+  {Instruction::BitCast,0}, // HLS
+  {Instruction::Load,1},
+  {Instruction::Store,1},
+  {Instruction::GetElementPtr,1.185},
+  {Instruction::Alloca,1},
+  {Instruction::PHI,0.87},
+  {Instruction::Call,1},
+  {Instruction::Invoke,1},
+  {Instruction::Switch,0.23},
+  {Instruction::Ret,1},
+  {Instruction::FNeg,0.92},
+  {Instruction::FAdd,53.57}, //HLS
+  {Instruction::FSub,53.57}, //HLS
+  {Instruction::FMul,44.36}, //HLS
+  {Instruction::FDiv,185}, //HLS
+  {Instruction::FRem,725.76}, //HLS more than 1 cycle (35)
+  {Instruction::ShuffleVector,1},
+  {Instruction::ExtractElement,1},
+  {Instruction::InsertElement,1},
+  {Instruction::InsertValue,1}
+};
+
+// Weight model taken from Region Seeker by Gioergios et al. in uM^2
+static map<unsigned,int> area = {
+  {Instruction::Br,0},
+  {Instruction::Add,39}, //HLS
+  {Instruction::Sub,39}, //HLS
+  {Instruction::Mul,1042},//HLS
+  {Instruction::UDiv,6090}, // HLS more than 1 cycle (35)
+  {Instruction::SDiv,6090},//HLS more than 1 cvcle (35)
+  {Instruction::URem,6090}, // HLS more than 1 cycle (35)
+  {Instruction::SRem,6090}, //HLS more than 1 cycle (35)
+  {Instruction::Shl,85},//HLS
+  {Instruction::LShr,85}, //HLS
+  {Instruction::AShr,85}, // HLS
+  {Instruction::And,32}, // HLS
+  {Instruction::Or,32},//HLS
+  {Instruction::Xor,32}, //HLS
+  {Instruction::Select,32}, //HLS
+  {Instruction::ICmp,18}, // HLS
+  {Instruction::FCmp,68}, //HLS
+  {Instruction::ZExt,0},//HLS
+  {Instruction::SExt,1},
+  {Instruction::FPToUI,558},//HLS
+  {Instruction::FPToSI,629},//HLS
+  {Instruction::FPExt,76},
+  {Instruction::PtrToInt,1},
+  {Instruction::IntToPtr,1},
+  {Instruction::SIToFP,629},
+  {Instruction::UIToFP,558},
+  {Instruction::Trunc,0},//HLS
+  {Instruction::FPTrunc,115},
+  {Instruction::BitCast,0},
+  {Instruction::Load,0},
+  {Instruction::Store,0},
+  {Instruction::GetElementPtr,15}, //HLS just vector indexing
+  {Instruction::Alloca,1},
+  {Instruction::PHI,1},
+  {Instruction::Call,1},
+  {Instruction::Invoke,1},
+  {Instruction::Switch,1},
   {Instruction::Ret,1},
   {Instruction::FNeg,40},
-  {Instruction::FAdd,160},
-  {Instruction::FSub,173},
-  {Instruction::FMul,2275},
-  {Instruction::FDiv,16114},
-  {Instruction::FRem,17298},
-  {Instruction::ShuffleVector,16114},
-  {Instruction::ExtractElement,17298},
-  {Instruction::InsertElement,40}
+  {Instruction::FAdd,375}, //HLS
+  {Instruction::FSub,375}, //HLS
+  {Instruction::FMul,678}, //HLS
+  {Instruction::FDiv,3608},
+  {Instruction::FRem,10716}, // HLS more than 1 cycle (2)
+  {Instruction::ShuffleVector,1},
+  {Instruction::ExtractElement,1},
+  {Instruction::InsertElement,1},
+  {Instruction::InsertValue,1}
 };
 
 // Energy model In nJ callibrated with Power8/9 measurements
@@ -140,6 +199,7 @@ static map<unsigned,float> energy = {
   {Instruction::Alloca,40.6},
   {Instruction::PHI,0.5},
   {Instruction::Call,0.5},
+  {Instruction::Invoke,1},
   {Instruction::Switch,0.5},
   {Instruction::Ret,0.5},
   {Instruction::FNeg,25},
@@ -150,7 +210,8 @@ static map<unsigned,float> energy = {
   {Instruction::FRem,1069.2},
   {Instruction::ShuffleVector,968.4},
   {Instruction::ExtractElement,1069.2},
-  {Instruction::InsertElement,50}
+  {Instruction::InsertElement,50},
+  {Instruction::InsertValue,40.6}
 };
 
 // Static power in nwatts not callibrated
@@ -190,6 +251,7 @@ static map<unsigned,float> powersta = {
   {Instruction::Alloca,0},
   {Instruction::PHI,0.3},
   {Instruction::Call,0},
+  {Instruction::Invoke,0},
   {Instruction::Switch,0.2},
   {Instruction::Ret,0},
   {Instruction::FNeg,0.07},
@@ -200,7 +262,8 @@ static map<unsigned,float> powersta = {
   {Instruction::FRem,0.8},
   {Instruction::ShuffleVector,0.7},
   {Instruction::ExtractElement,0.8},
-  {Instruction::InsertElement,0.7}
+  {Instruction::InsertElement,0.7},
+  {Instruction::InsertValue,0.2}
 };
 
 
@@ -209,10 +272,24 @@ static map<unsigned,float> powersta = {
  *
  * @param I Instruction to get the delay from
  */
-static float getDelay(Instruction *I){
-  float ret = 0; // default value
-  if(delay.count(I->getOpcode()))
-    ret = delay[I->getOpcode()]/1000000000; // from ns to seconds
+static double getSwDelay(Instruction *I){
+  double ret = 0; // default value
+  if(swdelay.count(I->getOpcode()))
+    ret = (float)swdelay[I->getOpcode()]/(float)CORE_FREQ; // from ns to seconds
+  else
+    errs() << "Missing Delay Value (" << I->getOpcodeName() << ")\n";
+  return ret;
+}
+
+/**
+ * Get the delay in seconds 
+ *
+ * @param I Instruction to get the delay from
+ */
+static double getHwDelay(Instruction *I){
+  double ret = 0; // default value
+  if(hwdelay.count(I->getOpcode()))
+    ret = hwdelay[I->getOpcode()]/1000000000; // from ns to seconds
   else
     errs() << "Missing Delay Value (" << I->getOpcodeName() << ")\n";
   return ret;

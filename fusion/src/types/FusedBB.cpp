@@ -7,8 +7,6 @@ FusedBB::~FusedBB(){
   for(auto E : *linkOps)
     delete E.second;
   delete linkOps;
-  delete argsBB;
-  delete annotInst;
   delete countMerges;
   delete storeDomain;
   for(auto E : *rawDeps)
@@ -18,11 +16,17 @@ FusedBB::~FusedBB(){
     delete E.second;
   delete fuseMap;
   delete safeMemI;
+  for(auto E : *selMap){
+    delete E.second.first;
+    delete E.second.second;
+  }
   delete selMap;
   for(auto E : *liveInPos)
-    delete E.second;
+    delete E;
   delete liveInPos;
   delete LiveIn;
+  for(auto E : *liveOutPos)
+    delete E;
   delete liveOutPos;
   delete BB;
   return;
@@ -34,6 +38,16 @@ FusedBB::FusedBB(FusedBB* Copy, list<Instruction*> *subgraph){
   ValueToValueMapTy VMap;
   
   this->BB = BasicBlock::Create(*Copy->Context,"");  
+  for(auto E : *Copy->fuseMap)
+    fuseMap->insert(pair<Instruction*,set<Instruction*>* >
+        (E.first,new set<Instruction*>(*E.second)));
+
+  for(auto E : *Copy->selMap)
+    (*selMap)[E.first] = 
+      pair<set<BasicBlock*>*,set<BasicBlock*>*> (
+        new set<BasicBlock*> (*E.second.first),
+        new set<BasicBlock*> (*E.second.second));
+
   for (Instruction &I : *Copy->getBB()){
     if(find(subgraph->begin(),subgraph->end(),&I) != subgraph->end()){
       Instruction *NewInst = I.clone();
@@ -42,24 +56,23 @@ FusedBB::FusedBB(FusedBB* Copy, list<Instruction*> *subgraph){
       VMap[&I] = NewInst;  
 
 
-      if(Copy->fuseMap->count(&I))
-        for(auto E : *(*Copy->fuseMap)[&I])
-          if(!mergedBBs->count(E->getParent()))
-            mergedBBs->insert(E->getParent());
+      if(Copy->fuseMap->count(&I)){
+
+        if(!this->fuseMap->count(NewInst))
+          (*this->fuseMap)[NewInst] = new set<Instruction*>;
+        
+        for(auto E : *(*Copy->fuseMap)[&I]){
+          (*this->fuseMap)[NewInst]->insert(E);
+          this->mergedBBs->insert(E->getParent());
+        }
+      }
       
-      //if(VMap[E.first])
-      if(Copy->linkOps->count(&I))
-        (*linkOps)[NewInst] = new set<pair<Value*,BasicBlock*> >(*(*(Copy->linkOps))[&I]);
-      //else
-      //  (*linkOps)[E.first] = new set<pair<Value*,BasicBlock*> >(*E.second);
-
-      if(isa<SelectInst>(&I))
-        if(!argsBB->count(I.getOperand(0)))
-          (*argsBB)[I.getOperand(0)] = (*Copy->argsBB)[I.getOperand(0)];
-
-      if(Copy->fuseMap->count(&I))
-        for(auto Iorig : *(*Copy->fuseMap)[&I])
-          annotInst->insert(Iorig);
+      if(Copy->selMap->count(&I)){
+        (*this->selMap)[NewInst] = pair<set<BasicBlock*>*, set<BasicBlock*>*> 
+          (new set<BasicBlock*>(*(*Copy->selMap)[&I].first),
+           new set<BasicBlock*>(*(*Copy->selMap)[&I].second));
+        this->selMap->erase(&I);
+      }
       
       if(Copy->isMergedI(&I))
         (*countMerges)[NewInst] = (*(Copy->countMerges))[&I];
@@ -67,18 +80,81 @@ FusedBB::FusedBB(FusedBB* Copy, list<Instruction*> *subgraph){
       if(Copy->safeMemI->count(&I))
         (*safeMemI)[NewInst] = (*(Copy->safeMemI))[&I];
 
-      if(Copy->selMap->count(&I))
-        (*selMap)[NewInst] = (*(Copy->selMap))[&I];
-
+      if(Copy->LiveOut->count(&I))
+        this->LiveOut->insert(NewInst);
+      else{
+        for(auto E : I.users()){
+          if(!this->LiveOut->count(NewInst) and 
+              find(subgraph->begin(),subgraph->end(),&(*E)) == subgraph->end())
+            this->LiveOut->insert(NewInst);
+        }
+      }
     }
   }
-  
-  for(auto E: *Copy->LiveIn)
-    LiveIn->insert(E);
 
-  for(auto E : *Copy->LiveOut){
-    if(VMap.count(E.second))
-      (*LiveOut)[E.first] = cast<Instruction>(VMap[cast<Value>(E.second)]);
+  for(auto E: *Copy->linkOps){
+    Value *index;
+    if(VMap.count(E.first))
+      index = VMap[E.first];
+    else
+      index = E.first;
+    (*this->linkOps)[index] =  new set<pair<Value*, BasicBlock*> >;
+    for( auto Orig : *E.second )
+      if(this->mergedBBs->count(Orig.second))
+        (*this->linkOps)[index]->insert(
+            pair<Value*,BasicBlock*>(Orig.first,Orig.second));
+  }
+  
+  SetVector<Value*> LiveIn, LiveOut;
+  liveInOut(*this->BB,&LiveIn,&LiveOut);
+  //Optimize this, we don't need to copy everything
+  for(auto E: *Copy->LiveIn)
+      this->LiveIn->insert(E);
+  for(auto E: LiveIn){
+    //if(isa<SelectInst>(E) and E->getName() == "fuse.sel")
+    //  this->LiveIn->insert(E); 
+    //else{
+      if(isa<Instruction>(E))
+        if(Copy->fuseMap->count(cast<Instruction>(E))){
+          for(auto Iorig : *(*Copy->fuseMap)[cast<Instruction>(E)]){
+            this->LiveIn->insert(Iorig);     
+            if(!this->linkOps->count(E))
+              (*this->linkOps)[E] = new set<pair<Value*,BasicBlock*> >;
+            (*this->linkOps)[E]->insert(
+                pair<Value*,BasicBlock*>(Iorig,Iorig->getParent()));
+          }
+        }
+        else{
+          this->LiveIn->insert(E);
+          if(!this->linkOps->count(E))
+            (*this->linkOps)[E] = new set<pair<Value*,BasicBlock*> >;
+          (*this->linkOps)[E]->insert(
+            pair<Value*,BasicBlock*>(E,cast<Instruction>(E)->getParent()));    
+        }
+        /*else{
+          this->LiveIn->insert(E);
+          for(auto Ufused : cast<Instruction>(E)->users()){
+            if(!this->LiveIn->count(E))
+              (*this->LiveIn)[E] = new set<BasicBlock*>;
+            if(this->fuseMap->count(cast<Instruction>(Ufused))){
+              for(auto Iorig : *(*this->fuseMap)[cast<Instruction>(Ufused)])
+                (*this->LiveIn)[E]->insert(Iorig->getParent());
+            }
+          }
+        }
+      } 
+    }*/
+  }
+  
+  rawDeps = new map<Instruction*,set<Instruction*>* >;
+  for(auto E : *Copy->rawDeps){
+    set<Instruction*> *aux = new set<Instruction*>;
+    if(VMap.count(cast<Value>(E.first))){
+      (*rawDeps)[cast<Instruction>(VMap[cast<Value>(E.first)])] = aux;
+      for(auto sE : *E.second)
+        if(VMap.count(cast<Value>(sE)))
+          aux->insert(cast<Instruction>(VMap[cast<Value>(sE)]));  
+    }
   }
 
   SmallVector<BasicBlock*,1> bbList;
@@ -111,29 +187,18 @@ FusedBB::FusedBB(FusedBB* Copy){
   
   mergedBBs = new set<BasicBlock*>(*Copy->mergedBBs);
 
-  LiveOut = new map<Instruction*, Instruction* >;
+  LiveOut = new set<Value*>;
   for(auto E : *Copy->LiveOut){
-    (*LiveOut)[E.first] = cast<Instruction>(VMap[cast<Value>(E.second)]);
+    this->LiveOut->insert(VMap[cast<Value>(E)]);
   }
 
   linkOps = new map<Value*,set<pair<Value*,BasicBlock*> >* >;
   for(auto E : *Copy->linkOps){
-    if(VMap[E.first])
+    if(VMap.count(E.first))
       (*linkOps)[VMap[E.first]] = new set<pair<Value*,BasicBlock*> >(*E.second);
     else
       (*linkOps)[E.first] = new set<pair<Value*,BasicBlock*> >(*E.second);
   }
-
-  argsBB = new map<Value*,BasicBlock*>;
-  for( auto E : *Copy->argsBB )
-    if(VMap[E.first])
-      (*argsBB)[VMap[E.first]] = E.second;
-    else
-      (*argsBB)[E.first] = E.second;
-
-  annotInst = new set<Instruction*>;
-  for(auto E : *Copy->annotInst)
-    annotInst->insert(E);
 
   countMerges = new map<Instruction*,int>;
   for(auto E : *Copy->countMerges)
@@ -163,41 +228,39 @@ FusedBB::FusedBB(FusedBB* Copy){
   for(auto E : *Copy->safeMemI)
     (*safeMemI)[cast<Instruction>(VMap[cast<Value>(E.first)])] = E.second;
 
-  selMap = new map<Instruction*,BasicBlock*>;
+  selMap = new map<Instruction*,pair<set<BasicBlock*>*,set<BasicBlock*>*> >;
   for(auto E : *Copy->selMap)
-    (*selMap)[cast<Instruction>(VMap[cast<Value>(E.first)])] = E.second;
+    (*selMap)[cast<Instruction>(VMap[cast<Value>(E.first)])] = 
+      pair<set<BasicBlock*>*,set<BasicBlock*>*> (
+        new set<BasicBlock*> (*E.second.first),
+        new set<BasicBlock*> (*E.second.second));
 
-  liveInPos = new map<Value*,map<BasicBlock*,int>* >;
+  liveInPos = new vector<map<BasicBlock*,Value*>* >;
   for(auto E : *Copy->liveInPos)
-    if(VMap[E.first])
-      (*liveInPos)[VMap[E.first]] = new map<BasicBlock*,int> (*E.second);
-    else
-      (*liveInPos)[E.first] = new map<BasicBlock*,int> (*E.second);
+    liveInPos->push_back(new map<BasicBlock*,Value*>(*E));
 
   LiveIn = new set<Value*>;
   for(auto E: *Copy->LiveIn)
     LiveIn->insert(E);
 
-  liveOutPos = new map<Value*,int>;
+  liveOutPos = new vector<map<BasicBlock*,set<Value*>*>* >;
   for(auto E : *Copy->liveOutPos)
-    (*liveOutPos)[VMap[E.first]] = E.second;
+    liveOutPos->push_back(new map<BasicBlock*,set<Value*>*>(*E));
 }
 
 void FusedBB::init(LLVMContext *Context){
   mergedBBs = new set<BasicBlock*>; 
-  LiveOut = new map<Instruction*, Instruction* >;
+  LiveOut = new set<Value*>;
   linkOps = new map<Value*,set<pair<Value*,BasicBlock*> >* >;
-  argsBB = new map<Value*,BasicBlock*>;
-  annotInst = new set<Instruction*>;
   countMerges = new map<Instruction*,int>;
   storeDomain = new map<Instruction*,int>;
   rawDeps = new map<Instruction*,set<Instruction*>* >;
   fuseMap = new map<Instruction*,set<Instruction*>* >;
   safeMemI = new map<Instruction*,unsigned>;
-  selMap = new map<Instruction*,BasicBlock*>;
-  liveInPos = new map<Value*,map<BasicBlock*,int>* >;
+  selMap = new map<Instruction*,pair<set<BasicBlock*>*,set<BasicBlock*>*> >;
+  liveInPos = new vector<map<BasicBlock*,Value*>* >;
   LiveIn = new set<Value*>;
-  liveOutPos = new map<Value*,int>;
+  liveOutPos = new vector<map<BasicBlock*,set<Value*>*>*>;
   this->Context = Context;
   return;
 }
@@ -208,9 +271,96 @@ FusedBB::FusedBB(LLVMContext *Context, string name){
   return;
 }
 
-void FusedBB::addMergedBB(BasicBlock *BB){
-  mergedBBs->insert(BB);
-  return;
+// This should be fusing selects with the same values
+Value* FusedBB::checkSelects(Value *Vorig, Value *Vfused,BasicBlock *BB,
+    map<Value*,Value*> *SubOp, set<Value*> *LiveInBB){
+  Value *found = NULL;
+
+  if(Vfused->getName() == "fuse.sel" or Vfused->getName() == "fuse.sel.safe"){
+    Instruction *If = cast<Instruction>(Vfused);
+    Value *Vcomp = SubOp->count(Vorig)? (*SubOp)[Vorig] : Vorig;
+    if((If->getOperand(1)->getName() == "fuse.sel" or If->getOperand(1)->getName() == 
+          "fuse.sel.safe") and !(*this->selMap)[If].second->count(BB)){
+      found = checkSelects(Vorig,If->getOperand(1),BB,SubOp,LiveInBB);
+    }
+    if((If->getOperand(2)->getName() == "fuse.sel" or If->getOperand(2)->getName() == 
+        "fuse.sel.safe") and !found and !(*this->selMap)[If].first->count(BB)){
+      found = checkSelects(Vorig,If->getOperand(2),BB,SubOp,LiveInBB);
+    }
+    if((Vcomp == If->getOperand(1) or (this->LiveIn->count(If->getOperand(1)) and
+          LiveInBB->count(Vcomp))) and !found and 
+        !(*this->selMap)[If].second->count(BB)){
+      (*selMap)[If].first->insert(BB);
+      found = Vfused;
+    }
+    else if((Vcomp == If->getOperand(2) or (this->LiveIn->count(If->getOperand(2)) and
+            LiveInBB->count(Vcomp))) and !found and 
+        !(*this->selMap)[If].first->count(BB)){
+      (*selMap)[If].second->insert(BB);
+      found = Vfused;
+    }
+  }
+
+  return found;
+}
+
+bool FusedBB::checkLinks(Value *Vfused, Value *Vorig, BasicBlock *BB){
+  bool found = false;
+  if(this->linkOps->count(Vfused)){
+    for(auto inV : *(*this->linkOps)[Vfused]){
+      found = inV.second == BB and inV.first != Vorig;
+      if(found) break;
+    }
+  }
+  return found;
+}
+
+Value* FusedBB::searchSelects(Value *Vfused, Value *Vorig, Instruction *Ifused,
+    Instruction *Iorig, map<Value*,Value*> *SubOp, IRBuilder<> *Builder,
+    Value *SelVal){
+  Value *SelI = NULL;
+  Value *Vcomp = SubOp->count(Vorig)? (*SubOp)[Vorig] : Vorig;
+  bool found = false;
+  bool found_rev = false;
+  for(auto fSel : (*this->selMap)){
+    found = fSel.first->getOperand(1) == Vcomp and fSel.first->getOperand(2) == Vfused;
+    found_rev = fSel.first->getOperand(1) == Vfused and fSel.first->getOperand(2) == Vcomp;
+
+    if(found and !fSel.second.second->count(Iorig->getParent())){ 
+      SelI = cast<Value>(fSel.first);
+      fSel.second.first->insert(Iorig->getParent());
+      break; 
+    }
+    else if(found_rev and !fSel.second.first->count(Iorig->getParent())){
+      SelI = cast<Value>(fSel.first);
+      fSel.second.second->insert(Iorig->getParent());
+      break;
+    }
+  }
+  if(!SelI){
+    SelI = Builder->CreateSelect(SelVal,Vorig,Vfused,"fuse.sel");
+    (*this->selMap)[cast<Instruction>(SelI)] = 
+      pair<set<BasicBlock*>*,set<BasicBlock*>*> (
+          new set<BasicBlock*>,new set<BasicBlock*>);
+    (*this->selMap)[cast<Instruction>(SelI)].first->insert(Iorig->getParent());
+    if(isa<Instruction>(Vfused)){
+      if(Vfused->getName() == "fuse.sel"){
+        for(auto BBSel : *(*this->selMap)[cast<Instruction>(Vfused)].first)
+          (*this->selMap)[cast<Instruction>(SelI)].second->insert(BBSel);
+        for(auto BBSel : *(*this->selMap)[cast<Instruction>(Vfused)].second)
+          (*this->selMap)[cast<Instruction>(SelI)].second->insert(BBSel);
+       }
+       else{
+        for(auto VFalse : *(*this->fuseMap)[Ifused])
+          (*this->selMap)[cast<Instruction>(SelI)].second->insert(VFalse->getParent());
+        }
+      }
+      else{
+        for(auto VFalse : *(*this->fuseMap)[Ifused])
+          (*this->selMap)[cast<Instruction>(SelI)].second->insert(VFalse->getParent());
+      }        
+  }
+  return SelI;
 }
 
 void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
@@ -218,15 +368,22 @@ void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
     Value *SelVal, set<Value*> *LiveInBB){
   map<int,int> match;
   set<int> used;
+  map<int,Value*> m_vChkSel;
+
   for(int i = 0;i < Ifused->getNumOperands(); ++i){
     Value *Vfused = Ifused->getOperand(i);
     for(int j = 0; j < Iorig->getNumOperands() and !match.count(i); ++j){
       Value *Vorig = Iorig->getOperand(j);
-      if(areOpsMergeable(Vfused,Vorig,Ifused->getParent(),Iorig->getParent(),
-            SubOp,this->LiveIn,LiveInBB) and !used.count(j)){
-        if(Ifused->isCommutative() or !Ifused->isCommutative() and i == j){
+      Value *vChkSel = NULL;
+      if(Ifused->isCommutative() or !Ifused->isCommutative() and i == j){
+        if(!used.count(j) and !checkLinks(Vfused,Vorig,Iorig->getParent()) and 
+           (areOpsMergeable(Vfused,Vorig,Ifused->getParent(),
+                             Iorig->getParent(),SubOp,this->LiveIn,LiveInBB) or 
+            (vChkSel = checkSelects(Vorig,Vfused,Iorig->getParent(),SubOp,LiveInBB)))){
           match[i] = j;
-          used.insert(j);        
+          used.insert(j);
+          if(vChkSel)
+            m_vChkSel[i] = vChkSel;
         }
       }
     }
@@ -237,10 +394,14 @@ void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
     Value *SelI = NULL;
     if(match.count(i)){
       Value *Vorig = Iorig->getOperand(match[i]);
-      if(!linkOps->count(Vfused))
-        (*linkOps)[Vfused] = new set<pair<Value*,BasicBlock*> >;
-      (*linkOps)[Vfused]->insert(pair<Value*,BasicBlock*>(Vorig,
-            Iorig->getParent())); 
+      if(LiveInBB->count(Vorig)){
+        if(m_vChkSel.count(i))
+          Vfused = m_vChkSel[i];
+        if(!linkOps->count(Vfused))
+          (*linkOps)[Vfused] = new set<pair<Value*,BasicBlock*> >;
+        (*linkOps)[Vfused]->insert(pair<Value*,BasicBlock*>(Vorig,
+              Iorig->getParent()));   
+      }
     } 
     else{
       for(int j = 0; j < Iorig->getNumOperands() and !SelI; ++j){
@@ -248,8 +409,7 @@ void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
           Value *Vorig = Iorig->getOperand(j);
           assert( Vfused->getType() == Vorig->getType() &&
               " Types differ, wrong merge" );
-          SelI = Builder->CreateSelect(SelVal,Vorig,Vfused,"fuse.sel");
-          (*selMap)[cast<Instruction>(SelI)] = Iorig->getParent();
+          SelI = searchSelects(Vfused,Vorig,Ifused,Iorig,SubOp,Builder,SelVal);
           Ifused->setOperand(i,SelI);
           used.insert(j);
         }
@@ -265,7 +425,7 @@ void FusedBB::mergeOp(Instruction *Ifused, Instruction *Iorig,
  *
  *
  */
-void FusedBB::secureMem(Value *SelVal, BasicBlock *destBB){
+void FusedBB::secureMem(Value *SelVal, BasicBlock *destBB, set<Value*> *LiveInBB){
   for(Instruction &I : *BB){
     // safe value of 1 means the load has been merged with all BBs and it's safe to use since
     // at least 1 instance will provide always a safe pointer
@@ -290,15 +450,24 @@ void FusedBB::secureMem(Value *SelVal, BasicBlock *destBB){
         IRBuilder<> builder(*Context);
         builder.SetInsertPoint(&I);
         Value *G = getSafePointer(cast<PointerType>(oPtr->getType()),Mod);
-        // If the instruction comes from B we put in normal order, otherwise we swap
-        for(auto Iorig = (*fuseMap)[&I]->begin(); Iorig != (*fuseMap)[&I]->end() and !SelSafe; ++Iorig)
-          if((*Iorig)->getParent() ==  destBB)
-            SelSafe = builder.CreateSelect(SelVal,oPtr,G,"fuse.sel.safe"); 
-        if(!SelSafe)
-          SelSafe = builder.CreateSelect(SelVal,G,oPtr,"fuse.sel.safe");
-        (*selMap)[cast<Instruction>(SelSafe)] = destBB;
+        if(LiveInBB->count(oPtr)){
+
+        }
+        else{
+          // If the instruction comes from B we put in normal order, otherwise we swap
+          for(auto Iorig = (*fuseMap)[&I]->begin(); Iorig != (*fuseMap)[&I]->end() 
+              and !SelSafe; ++Iorig)
+            if((*Iorig)->getParent() ==  destBB)
+              SelSafe = builder.CreateSelect(SelVal,oPtr,G,"fuse.sel.safe"); 
+          if(!SelSafe)
+            SelSafe = builder.CreateSelect(SelVal,G,oPtr,"fuse.sel.safe");
+          (*selMap)[cast<Instruction>(SelSafe)] = 
+            pair<set<BasicBlock*>*,set<BasicBlock*>*> (
+                new set<BasicBlock*>, new set<BasicBlock*>);
+          (*selMap)[cast<Instruction>(SelSafe)].first->insert(destBB);
+          I.setOperand(index,SelSafe);         
+        } 
         (*safeMemI)[&I] = 2;
-        I.setOperand(index,SelSafe);          
       }
     }    
   }
@@ -414,12 +583,12 @@ bool FusedBB::checkNoLoop(Instruction *Iref, Instruction *Isearch, BasicBlock *B
 }
 
 void FusedBB::mergeBB(BasicBlock *BB){
-  this->BB->setName(BB->getName()+this->BB->getName());
+  this->BB->setName(this->BB->getName()+BB->getName());
   IRBuilder<> builder(*Context);
-  Value *SelVal = new Argument(builder.getInt1Ty(),"fuse.sel.arg");
-  (*argsBB)[SelVal] = BB;
   builder.SetInsertPoint(this->BB);
-  memRAWDepAnalysis(BB);
+  Value *SelVal = new Argument(builder.getInt1Ty(),"fuse.sel.arg");
+
+  this->memRAWDepAnalysis(BB);
   
   set<Instruction*> merged;
   map<Value*,Value*> SubOp;
@@ -431,26 +600,19 @@ void FusedBB::mergeBB(BasicBlock *BB){
 
 
   // Update Stats
-  this->addMergedBB(BB);
+  this->mergedBBs->insert(BB);
 
   for(Instruction &Ib : *BB){
     bool bmerged = false;
     if(!isa<BranchInst>(Ib)){
       for(Instruction &Ia : *this->BB){
-        //dbgcount = 0;
         if(!merged.count(&Ia) and areInstMergeable(Ia,Ib)
             and checkNoLoop2(&Ib,&Ia,BB,&SubOp)){ 
-            //and getStoreDomain(&Ia,this->BB) == getStoreDomain(&Ib, BB)){
-          //repeated.clear();
-          //errs() << "merged\n";
           merged.insert(&Ia);
           bmerged = true;
-          //this->CycleDetector(BB->getParent());
-          //merged.insert(&Ib);
           this->mergeOp(&Ia,&Ib,&SubOp,&builder,SelVal,&LiveInBB); 
           this->annotateMerge(&Ib,&Ia,BB); 
           this->addSafety(&Ia);
-          this->linkLiveOut(&Ib,&Ia,&LiveOutBB);
           SubOp[cast<Value>(&Ib)] = cast<Value>(&Ia);
           break;
         }
@@ -464,7 +626,6 @@ void FusedBB::mergeBB(BasicBlock *BB){
         (*fuseMap)[newInstB]->insert(&Ib);
         builder.Insert(newInstB);
         this->dropSafety(&Ib); 
-        this->linkLiveOut(&Ib,newInstB,&LiveOutBB);
         SubOp[cast<Value>(&Ib)] = cast<Value>(newInstB);
       } 
     }
@@ -478,53 +639,61 @@ void FusedBB::mergeBB(BasicBlock *BB){
           Value *Vc = Ic.getOperand(j);
           if(SubOp.count(Vc) and find(LiveInBB.begin(),LiveInBB.end(),Vc) == LiveInBB.end()
             and find(this->LiveIn->begin(),this->LiveIn->end(),Vc) == this->LiveIn->end()
-            and (find(LiveOutBB.begin(),LiveOutBB.end(),Vc) == LiveOutBB.end() or merged.count(&Ic)) ){
+            and (find(LiveOutBB.begin(),LiveOutBB.end(),Vc) == LiveOutBB.end() or merged.count(&Ic) or this->selMap->count(&Ic)) ){
             Ic.setOperand(j,SubOp[Vc]);
           }
         }
     }
-      
-    bool jiji = false;
-          if(jiji){
-            FunctionType *funcType = FunctionType::get(builder.getVoidTy(),false);
-            Function *f = Function::Create(funcType,
-                Function::ExternalLinkage,"offload_func",BB->getModule());
-            this->BB->insertInto(f);
-			      Instruction *V = builder.CreateCall(f);
-            V->moveBefore(BB->getTerminator());
-            DominatorTree DT = DominatorTree(*f);
-            this->KahnSort();
-            verifyFunction(*f);
-            for(auto &I: *this->BB){
-              for(auto *U : I.users()){
-                if(DT.dominates((Instruction*)U,&I)){
-                  errs() << "Alert!\n";
-                }
-              }
-            }
-          }
           
     this->updateRawDeps(&SubOp);
   }
-  /*for(Instruction &Ic: *this->BB){
-    for(int j =0;j<Ic.getNumOperands(); ++j){
-      Value *Vc = Ic.getOperand(j);
-      if(SubOp.count(Vc) and find(LiveInBB.begin(),LiveInBB.end(),Vc) == LiveInBB.end() and find(LiveOutBB.begin(),LiveOutBB.end(),Vc) == LiveOutBB.end())
-        Ic.setOperand(j,SubOp[Vc]);
-    }
-  }*/
-  for(auto inV : LiveInBB)
+  
+  for(auto inV : LiveInBB){
+    bool found = false;
     this->LiveIn->insert(inV);
+    for(auto linkedV : *this->linkOps){
+      if(found) break;
+      for(auto origV : *linkedV.second){
+        if(found) break;
+        found = (inV == origV.first and origV.second == BB);
+      }
+    }
+    if(!found){
+      if(!this->linkOps->count(inV)){
+        (*this->linkOps)[inV] = new set<pair<Value*,BasicBlock*> >;
+        (*this->linkOps)[inV]->insert(pair<Value*,BasicBlock*>(inV,BB));
+      }
+      else{
+        Value *inAux = new Argument(inV->getType(),inV->getName()+"arg");
+        (*this->linkOps)[inAux] = new set<pair<Value*,BasicBlock*> >;
+        (*this->linkOps)[inAux]->insert(pair<Value*,BasicBlock*>(inV,BB));
+        for(auto E : SubOp){
+          Value *Orig = E.first;
+          Value *Fused = E.second;
+          for(int op=0;op < cast<Instruction>(Orig)->getNumOperands(); op++ ){
+            if(cast<Instruction>(Orig)->getOperand(op) == inV){
+              cast<Instruction>(Fused)->setOperand(op,inAux);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for(auto E : *this->fuseMap)
+    for(auto outV: *E.second)
+      if(cast<Instruction>(outV)->getParent() == BB)
+        if(find(LiveOutBB.begin(),LiveOutBB.end(),outV) != LiveOutBB.end())
+          this->LiveOut->insert(cast<Value>(E.first));
 
   this->updateStoreDomain(&SubOp);
   this->updateRawDeps(&SubOp);
   // TODO: check if this can be made more efficient
   if (this->getNumMerges() > 1){
-    /*for(auto &Ic: *(this->BB))
-      Ic.dump();*/
     this->KahnSort();
-    this->secureMem(SelVal,BB);
+    this->secureMem(SelVal,BB,&LiveInBB);
   }
+
   return;
 }
 
@@ -539,16 +708,16 @@ void FusedBB::mergeBB(BasicBlock *BB){
  */
 void FusedBB::linkLiveOut(Instruction *InstrOrig, Instruction *InstrFused,
     SetVector<Value*> *LiveOut){
-  if(LiveOut->count(cast<Value>(InstrOrig))){
-    if(this->LiveOut->count(InstrOrig)){
+  //if(LiveOut->count(cast<Value>(InstrOrig))){
+  //  if(this->LiveOut->count(InstrOrig)){
       //(*this->LiveOut)[InstrOrig]->insert(InstrFused);
-    }
-    else{
+   // }
+    //else{
       //(*this->LiveOut)[InstrOrig] = new set<Instruction*>;
       //(*this->LiveOut)[InstrOrig]->insert(InstrFused);
-      (*this->LiveOut)[InstrOrig] = InstrFused;
-    }
-  }
+     // (*this->LiveOut)[InstrOrig] = InstrFused;
+    //}
+  //}
 	return;
 }
 
@@ -773,8 +942,8 @@ bool FusedBB::getVerilog(raw_fd_stream &out){
     
 void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* BB){
   // What BB does this merge come from
-  if(!annotInst->count(Iorig))
-    annotInst->insert(Iorig);
+  //if(!annotInst->count(Iorig))
+  //  annotInst->insert(Iorig);
   // How many merges does this Inst have?
   if(countMerges->count(Imerg)){
     (*countMerges)[Imerg]++;
@@ -795,7 +964,7 @@ void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* 
   return;
 }
 
-bool FusedBB::insertInlineCall(Function *F){
+bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap){
   static IRBuilder<> Builder(*Context);
   vector<Type*> inputTypes;
   vector<Instruction*> removeInst;
@@ -804,87 +973,61 @@ bool FusedBB::insertInlineCall(Function *F){
   //Type *outputType = ((PointerType*)F->getReturnType())->getElementType();
 
   for(auto BB : *mergedBBs){
-      Instruction *I = BB->getFirstNonPHIOrDbg();
-      Builder.SetInsertPoint(I);
 
       // Function Arguments
       SmallVector<Value*,20> Args(this->liveInPos->size(),NULL);
 
-      // Live in Values
-      set<int> filled;
-      for(int i = 0; i < this->liveInPos->size(); ++i)
-        filled.insert(i);
-
+      // LiveIn Values
+      int pos = 0;
       for(auto E : *this->liveInPos){
-        Value *inV = E.first;
-        BasicBlock *targetBB = NULL;
-        for(auto U : E.first->users())
-          targetBB = cast<Instruction>(U)->getParent() == BB? cast<Instruction>(U)->getParent() : NULL;
-        if(targetBB){
-          int pos = (*E.second)[targetBB];
+        if(E->count(BB)){
+          Value *inV = VMap->count((*E)[BB])? (*VMap)[(*E)[BB]]:(*E)[BB];
           Args[pos] = inV;
-          filled.erase(pos);
         }
+        else
+          Args[pos] = Constant::getNullValue(F->getArg(pos)->getType());
+        pos++;
       }
-        
-      // Function Selection arguments 
-      for(auto Varg : *argsBB){
-        int pos = (*(*liveInPos)[Varg.first])[NULL];
-        BasicBlock *selBB = Varg.second;
-        Args[pos] = Builder.getInt1(selBB==BB);
-        filled.erase(pos);
-      }
-
-      for(auto pos : filled)
-        Args[pos] = Constant::getNullValue(F->getArg(pos)->getType());
-
 			
-      Value *outStruct = Builder.CreateCall(F,Args);
       
       // Removing inlined instructions
       auto rI = BB->rbegin();
-      // Avoid removing the terminator
-      rI++;
-      while(&(*rI) != (Instruction*)outStruct and annotInst->count(&*rI)){ 
-        removeInst.push_back(&(*rI));
-        rI++;
+      for(; rI != BB->rend(); rI++ ){
+        if(find(Args.begin(),Args.end(),(Value*)&(*rI)) != Args.end())
+          break;
       }
+      Builder.SetInsertPoint(&(*--rI));
+      Value *outStruct = Builder.CreateCall(F,Args);
 
       //LiveOuts
-      for(auto E : *this->LiveOut){
-        if(E.first->getParent() == BB){
-          int pos = (*liveOutPos)[E.second];
+      pos = 0;
+      for(auto E : *this->liveOutPos){
+        if(E->count(BB)){
           Value *outGEPData = Builder.CreateStructGEP(outStruct,pos);
-          Value *out = Builder.CreateLoad(E.first->getType(),outGEPData);
-          E.first->replaceAllUsesWith(out);
-        
-          // If the out value is the new livein of a merged bb we copy it's pos
-          if(liveInPos->count(E.first))
-            (*liveInPos)[out] = (*liveInPos)[E.first];
+          Value *out = Builder.CreateLoad((*(*E)[BB]->begin())->getType(),outGEPData);
+          for(auto outV : *(*E)[BB]){
+            outV->replaceAllUsesWith(out);
+            // If the out value is the new livein of a merged bb we copy it's pos
+            (*VMap)[outV] = out;  
+            // Sort Users
+          }
         }
+        pos++;
       }
 
-/*
-      vector<AllocaInst*> oAllocas;
-      for(int arg = 0; arg < LiveOut.size(); ++arg){
-        Value *Vout = LiveOut[arg];
-        Value *fusedV = (*this->LiveOut)[cast<Instruction>(Vout)];
-        int pos = (*liveOutPos)[fusedV];
-        Value *outGEPData = Builder.CreateStructGEP(outStruct,pos);
-        Value *out = Builder.CreateLoad(LiveOut[arg]->getType(),outGEPData);
-        LiveOut[arg]->replaceAllUsesWith(out);
-
-        // If the out value is the new livein of a merged bb we copy it's pos
-        if(liveInPos->count(LiveOut[arg])){
-          (*liveInPos)[out] = (*liveInPos)[LiveOut[arg]] ;
-        }
-      }*/
 	}
+  //verifyModule(*F->getParent());
 
-  for(auto I : removeInst)
-    I->eraseFromParent();
-  verifyModule(*F->getParent());
+}
 
+// Remove Inlined Instructions
+void FusedBB::removeOrigInst(){
+  for(auto Map : *this->fuseMap)
+    for(auto I : *Map.second)
+      if(Map.first->getParent() == this->BB){
+        I->replaceAllUsesWith(llvm::UndefValue::get(I->getType()));
+        I->eraseFromParent();
+  }
 }
 
   /**
@@ -895,6 +1038,7 @@ bool FusedBB::insertInlineCall(Function *F){
    * @return true if success
    */
   bool FusedBB::insertOffloadCall(Function *F){
+    /*
     static IRBuilder<> Builder(*Context);
     vector<Type*> inputTypes;
     //vector<GlobalVariable*> SafeInputs;
@@ -1008,7 +1152,7 @@ bool FusedBB::insertInlineCall(Function *F){
 
   for(auto I : removeInst)
     I->eraseFromParent();
-
+*/
 }
 
 /**
@@ -1020,7 +1164,7 @@ bool FusedBB::insertInlineCall(Function *F){
  * @param *M LLVM Module
  */
 
-void FusedBB::getMetrics(vector<float> *data, Module *M){
+void FusedBB::getMetrics(vector<double> *data, Module *M){
   MDNode *N;
 	DataLayout DL  = M->getDataLayout();
   float orig_inst = 0;
@@ -1037,7 +1181,7 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
   float power = 0;
   pair<float,float> crit_path = getCriticalPathCost(BB);
   for(auto I = BB->begin(); I != BB->end() ; ++I){
-    time += getDelay(&*I);
+    time += getSwDelay(&*I);
     if (isa<StoreInst>(I) or isa<LoadInst>(I)){
       if(isa<StoreInst>(I)){
         footprint += DL.getTypeSizeInBits(I->getOperand(0)->getType());
@@ -1090,6 +1234,120 @@ void FusedBB::getMetrics(vector<float> *data, Module *M){
   return;
 }
 
+void FusedBB::inlineOutputSelects(SelectInst *SelI, int pos){
+  Value *vTrue = SelI->getTrueValue();
+  Value *vFalse = SelI->getFalseValue();
+  Instruction *iTrue = dyn_cast<Instruction>(vTrue);
+  Instruction *iFalse = dyn_cast<Instruction>(vFalse);
+  if(vTrue->getName() == "fuse.sel" or vTrue->getName() == "fuse.sel.safe")
+    inlineOutputSelects(cast<SelectInst>(vTrue), pos);
+  else{
+    if(iTrue and this->fuseMap->count(iTrue)){
+      for(auto E : *(*this->selMap)[SelI].first)
+        for(auto origI : *(*this->fuseMap)[iTrue])
+          if(origI->getParent() == E){
+            if(!(*this->liveOutPos)[pos]->count(E))
+              (*(*this->liveOutPos)[pos])[E] = new set<Value*>;
+            (*(*this->liveOutPos)[pos])[E]->insert(cast<Value>(origI));
+            break;
+          }
+    }
+    else if (!isa<Constant>(vTrue)){
+      for(auto E : *(*this->selMap)[SelI].first){
+        if(!(*this->liveOutPos)[pos]->count(E))
+          (*(*this->liveOutPos)[pos])[E] = new set<Value*>;
+        (*(*this->liveOutPos)[pos])[E]->insert(vTrue);
+      }
+    }
+  }
+  if(vFalse->getName() == "fuse.sel" or vFalse->getName() == "fuse.sel.safe")
+    inlineOutputSelects(cast<SelectInst>(vFalse), pos);
+  else{
+    if(iFalse and this->fuseMap->count(iFalse)){
+      for(auto E : *(*this->selMap)[SelI].second){
+        for(auto origI : *(*this->fuseMap)[iFalse])
+          if(origI->getParent() == E){
+            if(!(*this->liveOutPos)[pos]->count(E))
+              (*(*this->liveOutPos)[pos])[E] = new set<Value*>;
+            (*(*this->liveOutPos)[pos])[E]->insert(cast<Value>(origI));
+              break;
+          }    
+      }
+    }
+    else if (!isa<Constant>(vFalse)){
+      for(auto E : *(*this->selMap)[SelI].second){
+        if(!(*this->liveOutPos)[pos]->count(E))
+          (*(*this->liveOutPos)[pos])[E] = new set<Value*>;
+        (*(*this->liveOutPos)[pos])[E]->insert(vFalse);
+      }
+    }
+  }
+}
+
+void FusedBB::inlineInputSelects(SelectInst *SelI, int pos){
+  Value *vTrue = SelI->getTrueValue();
+  Value *vFalse = SelI->getFalseValue();
+  Instruction *iTrue = dyn_cast<Instruction>(vTrue);
+  Instruction *iFalse = dyn_cast<Instruction>(vFalse);
+  /*if(isa<Argument>(vTrue)){
+    assert((*this->linkOps)[vTrue]->size() < 2);
+    vTrue = (*this->linkOps)[vTrue]->begin()->first;
+  }
+  if(isa<Argument>(vFalse)){
+    assert((*this->linkOps)[vFalse]->size() < 2);
+    vFalse = (*this->linkOps)[vFalse]->begin()->first;
+  }*/
+  if(vTrue->getName() == "fuse.sel")
+    inlineInputSelects(cast<SelectInst>(vTrue), pos);
+  else{
+    if(iTrue and this->fuseMap->count(iTrue)){
+      for(auto E : *(*this->selMap)[SelI].first)
+        for(auto origI : *(*this->fuseMap)[iTrue])
+          if(origI->getParent() == E){
+            (*(*this->liveInPos)[pos])[E] = cast<Value>(origI);
+            break;
+          }
+    }
+    else
+      for(auto E : *(*this->selMap)[SelI].first){
+        Value *auxV = vTrue;
+        if(this->linkOps->count(vTrue)){
+          for(auto vLink : *(*this->linkOps)[vTrue]){
+            if(vLink.second == E){
+              auxV = vLink.first;
+              break;  
+            }
+          }
+        }
+        (*(*this->liveInPos)[pos])[E] = auxV;
+    }
+  }
+  if(vFalse->getName() == "fuse.sel")
+    inlineInputSelects(cast<SelectInst>(vFalse), pos);
+  //TODO: Use the following lines also above in the vTrue management (More efficient)
+  else{
+    if(iFalse and this->fuseMap->count(iFalse)){
+      for(auto origI : *(*this->fuseMap)[iFalse])
+        if((*this->selMap)[SelI].second->count(origI->getParent()))
+          (*(*this->liveInPos)[pos])[origI->getParent()] = cast<Value>(origI);
+    }
+    else{
+      for(auto E : *(*this->selMap)[SelI].second){
+        Value *auxV = vFalse;
+        if(this->linkOps->count(vFalse)){
+          for(auto vLink : *(*this->linkOps)[vFalse]){
+            if(vLink.second == E){
+              auxV = vLink.first;
+              break;
+            }
+          }
+        }
+        (*(*this->liveInPos)[pos])[E] = auxV;
+      }
+    }
+  }
+}
+
 /**
  * Creates an inline function from a given BB
  *
@@ -1103,63 +1361,81 @@ Function* FusedBB::createInline(Module *Mod){
   SetVector<Value*> LiveIn, LiveOut;
   liveInOut(*BB, &LiveIn, &LiveOut);
   
-  // Once we merged the BBs, we must annotate liveIn values from different
-  // locations with their respective locations in the input Struct
-  // so that once we call the offload function, we know what fields must 
-  // be filled and which ones should be filled with padding and safe inputs
-  // This function adds metadata to the LiveIn values from different BBs
-  // Same for Live Outs
-  //linkPositionalLiveInOut(&BB);
-  
-  /*for(auto &I : *BB)
-    I.dump();
-  errs() << '\n';*/
-
   int pos = 0;
   for(auto Vin: LiveIn){
+    this->liveInPos->push_back(new map<BasicBlock*,Value*>);
     if(isa<Instruction>(Vin)){
-      if(linkOps->count(Vin)){
-        for(auto Vorig: *(*linkOps)[Vin]){
-          if(!liveInPos->count(Vorig.first))
-            (*liveInPos)[Vorig.first] = new map<BasicBlock*,int>;
-          (*(*liveInPos)[Vorig.first])[Vorig.second] = pos;
-        }
+      Instruction *Iin = cast<Instruction>(Vin);
+      if(isa<SelectInst>(Vin) and (Vin->getName() == "fuse.sel" or
+          Vin->getName() == "fuse.sel.safe")){
+        inlineInputSelects(cast<SelectInst>(Vin),pos);
       }
-      if(!liveInPos->count(Vin))
-        (*liveInPos)[Vin] = new map<BasicBlock*,int>;
-      (*(*liveInPos)[Vin])[cast<Instruction>(Vin)->getParent()] = pos;
+      else{
+        for(auto linkV : *(*this->linkOps)[Vin])
+          (*(*this->liveInPos)[pos])[linkV.second] = linkV.first;            
+      }
     }
     else if (isa<Argument>(Vin)){
-      if(linkOps->count(Vin)){
-        for(auto Vorig: *(*linkOps)[Vin]){
-          if(!liveInPos->count(Vorig.first))
-            (*liveInPos)[Vorig.first] = new map<BasicBlock*,int>;
-          (*(*liveInPos)[Vorig.first])[Vorig.second] = pos;
-        }
+      if(Vin->getName() == "fuse.sel.arg"){
+        Instruction *SelI = cast<Instruction>(*Vin->user_begin());
+        for(auto E : *(*this->selMap)[SelI].first)
+          (*(*this->liveInPos)[pos])[E] = Builder.getInt1(true);
+        for(auto E : *(*this->selMap)[SelI].second)
+          (*(*this->liveInPos)[pos])[E] = Builder.getInt1(false);
       }
-      if(!liveInPos->count(Vin))
-        (*liveInPos)[Vin] = new map<BasicBlock*,int>;
-      (*(*liveInPos)[Vin])[NULL] = pos;
+      else if(this->linkOps->count(Vin)){
+        for(auto linkV : *(*this->linkOps)[Vin])
+          (*(*this->liveInPos)[pos])[linkV.second] = linkV.first;            
+      }
+      else{
+        for(auto user : Vin->users())
+          if(this->mergedBBs->count(cast<Instruction>(user)->getParent()))
+            (*(*this->liveInPos)[pos])[cast<Instruction>(user)->getParent()] = Vin;
+      }
+    }
+    else{
+      if(this->linkOps->count(Vin)){
+        for(auto linkV : *(*this->linkOps)[Vin])
+          (*(*this->liveInPos)[pos])[linkV.second] = linkV.first;            
+      }
+      /*for(auto user : Vin->users()){
+        if(this->fuseMap->count(cast<Instruction>(user))){
+          for(auto Iorig : *(*this->fuseMap)[cast<Instruction>(user)]){
+            if(((*this->liveInPos)[pos])->count(Iorig->getParent())){
+              this->liveInPos->push_back(new map<BasicBlock*,Value*>);
+              pos++;
+            }
+            (*(*this->liveInPos)[pos])[Iorig->getParent()] = Vin;
+          }
+        }
+      }*/
     }
     pos++;
   }
 
-  for(auto Vout : *this->LiveOut)
-    if(!liveOutPos->count(Vout.second))
-      (*liveOutPos)[Vout.second] = -1;
-      
   pos = 0;
-  for(auto Vout : *this->liveOutPos)
-    (*liveOutPos)[Vout.first] = pos++;
-
+  for(auto outV : *this->LiveOut){
+    this->liveOutPos->push_back(new map<BasicBlock*,set<Value*>*>);
+    if(this->fuseMap->count(cast<Instruction>(outV))){
+      for(auto origOut : *((*this->fuseMap)[cast<Instruction>(outV)])){
+        if(!(*this->liveOutPos)[pos]->count(origOut->getParent()))
+          (*(*this->liveOutPos)[pos])[origOut->getParent()] = new set<Value*>;
+        (*(*this->liveOutPos)[pos])[origOut->getParent()]->insert(origOut);  
+      }
+    }
+    else if(isa<SelectInst>(outV) and outV->getName() == "fuse.sel"){
+      inlineOutputSelects(cast<SelectInst>(outV),pos);
+    }
+    pos++;
+  }
 
   // Instantate all LiveIn values as Inputs types
-  for(auto V: LiveIn){
-    inputTypes.push_back(V->getType());
+  for(auto V: *this->liveInPos){
+    inputTypes.push_back((V->begin()->second)->getType());
   }
   // Instantate all LiveOut values as Output types
-  for(auto V: *this->liveOutPos){
-    outputTypes.push_back(V.first->getType());
+  for(auto V: *this->LiveOut){
+    outputTypes.push_back(V->getType());
   }
 
   // Input/Output structs
@@ -1201,9 +1477,11 @@ Function* FusedBB::createInline(Module *Mod){
       Value *outGEPData = Builder.CreateStructGEP(outData,i);
       Builder.CreateStore(LiveOut[i],outGEPData);
     }*/
-    for(auto Vout : *this->liveOutPos){
-      Value *outGEPData = Builder.CreateStructGEP(outData,Vout.second);
-      Builder.CreateStore(Vout.first,outGEPData);
+    pos = 0;
+    for(auto Vout : *this->LiveOut){
+      Value *outGEPData = Builder.CreateStructGEP(outData,pos);
+      Builder.CreateStore(Vout,outGEPData);
+      pos++;
     }
     Builder.CreateRet(outData);
 
@@ -1246,7 +1524,7 @@ Function* FusedBB::createInline(Module *Mod){
     /*for(auto &I : *BB)
       I.dump();
     errs() << '\n';*/
-
+/*
     int pos = 0;
     for(auto Vin: LiveIn){
       if(isa<Instruction>(Vin)){
@@ -1334,7 +1612,7 @@ Function* FusedBB::createInline(Module *Mod){
       // Preserve names for arguments 
       inData[i]->setName(LiveIn[i]->getName());
     }
-
+*/
     /*
     for(auto &I: BB){
       Builder.SetInsertPoint(&I);
@@ -1343,6 +1621,8 @@ Function* FusedBB::createInline(Module *Mod){
     }*/
 
     // Store Data (Creating New BB for readibility)
+    // 
+     /*
       BasicBlock* storeBB = BasicBlock::Create(*Context,"storeBB",f);
       Builder.SetInsertPoint(storeBB);
       //Builder.CreateCall(dbgt->getFunctionType(),cast<Value>(dbgt));  
@@ -1351,6 +1631,7 @@ Function* FusedBB::createInline(Module *Mod){
         Value *outGEPData = Builder.CreateStructGEP(outData,i);
         Builder.CreateStore(LiveOut[i],outGEPData);
       }*/
+  /*
       for(auto Vout : *this->liveOutPos){
         Value *outGEPData = Builder.CreateStructGEP(outData,Vout.second);
         Builder.CreateStore(Vout.first,outGEPData);
@@ -1360,9 +1641,9 @@ Function* FusedBB::createInline(Module *Mod){
       // Merged block jumps to store output data
       Builder.SetInsertPoint(BB);
       Builder.CreateBr(storeBB);
-
+*/
     // Check Consistency
-    verifyFunction(*f,&errs());
+ //   verifyFunction(*f,&errs());
 
     //f->dump();
     //Mod->dump();
@@ -1402,10 +1683,11 @@ Function* FusedBB::createInline(Module *Mod){
     delete NewMod;
     */
     // HLS and OpenCL Stuff
-    MDNode *N = MDNode::get(f->getContext(),NULL);
-    f->setMetadata("opencl.kernels",N);
+    //MDNode *N = MDNode::get(f->getContext(),NULL);
+    //f->setMetadata("opencl.kernels",N);
 
-    return f;
+    //return f;
+    return NULL;
   }
 
 bool FusedBB::isMergedBB(BasicBlock *BB){
@@ -1420,101 +1702,124 @@ int FusedBB::size(){
   return mergedBBs->size();
 }
 
-void traverseExclude(Instruction *I, set<Instruction*> *visited,
-    set<Instruction*> *excluded){
-  if(!excluded->count(I) and !visited->count(I)){
+void FusedBB::traverseExclude(Instruction *I, set<Instruction*> *visited,
+    set<Instruction*> *excluded, list<Instruction*> *list){
+  if(!excluded->count(I)){
     excluded->insert(I);
-    for(auto U : I->users()){
-      if(isa<Instruction>(U) and cast<Instruction>(U)->getParent() == I->getParent())
-        traverseExclude(cast<Instruction>(U),visited,excluded);
+    auto it = find(list->begin(),list->end(),I);
+    if(it != list->end()){
+      list->erase(it);
+      auto it2 = find(visited->begin(),visited->end(),I);
+      visited->erase(it2);
     }
+    //visited->insert(I);
+    for(auto U : I->users()){
+      if(cast<Instruction>(U)->getParent() == I->getParent())
+        traverseExclude(cast<Instruction>(U),visited,excluded,list);
+    }
+    if(this->rawDeps->count(I))
+      for(auto rDep : *(*rawDeps)[I])
+        traverseExclude(rDep,visited,excluded,list);
   }
 }
 
 
-void traverseSubgraph(Instruction *I, set<Instruction*> *visited, 
-    set<Instruction*> *excluded, list<Instruction*> *list){
+void FusedBB::traverseSubgraph(Instruction *I, set<Instruction*> *visited, 
+    set<Instruction*> *excluded, list<Instruction*> *list, vector<vector<double>*> *prebb, vector<BasicBlock*> *bblist, float cp, map<BasicBlock*,double> *tseq){
+  float cp_max = 1000000;
+  for(auto Il : *list)
+    if(fuseMap->count(I))
+      for(auto Ip : *(*fuseMap)[I])
+        if( tseq->count(Ip->getParent()) )
+          if( (*tseq)[Ip->getParent()] < cp_max )
+            cp_max =  (*tseq)[Ip->getParent()];
 
-  if(!(isa<StoreInst>(I) or isa<LoadInst>(I) or isa<BranchInst>(I) or visited->count(I) or excluded->count(I))){
+  // We remove here instructions on able to be handled by our substrate
+  if(isa<LoadInst>(I) or isa<StoreInst>(I) or isa<CallInst>(I) or
+      isa<InsertElementInst>(I) or isa<ExtractElementInst>(I) or
+      isa<ShuffleVectorInst>(I) or isa<InsertValueInst>(I) or
+      (visited->count(I) and find(list->begin(),list->end(),I) == list->end())){
+    visited->insert(I);
+    traverseExclude(I,visited,excluded,list);
+  }
+  else if(cp+getHwDelay(I) > cp_max){
+    traverseExclude(I,visited,excluded,list);
+  }
+  else if(!excluded->count(I) and !visited->count(I)){
     visited->insert(I);
     list->push_back(I);
-    for(auto &Op : I->operands()){
-      if(isa<Instruction>(Op) and cast<Instruction>(Op)->getParent() == 
-          I->getParent() and !isa<LoadInst>(Op) and !isa<StoreInst>(Op))
-        traverseSubgraph(cast<Instruction>(Op),visited,excluded,list);
-    }
-    for(auto Us : I->users()){
-      if(isa<Instruction>(Us) and cast<Instruction>(Us)->getParent() ==
-          I->getParent())
-        traverseSubgraph(cast<Instruction>(Us),visited,excluded,list);
-    }
+    for(auto U : I->users())
+      if(cast<Instruction>(U)->getParent() == I->getParent())
+        traverseSubgraph(cast<Instruction>(U),visited,excluded,list,prebb,
+            bblist,cp+getHwDelay(I),tseq);
   }
-  else if(!visited->count(I)){
-    traverseExclude(I,visited,excluded);
-  }
-
+  
   return;
 }
 
-void FusedBB::splitBB(vector<list<Instruction*> *> *subgraphs){
+void FusedBB::splitBB(vector<list<Instruction*> *> *subgraphs, vector<vector<double> *> *prebb, vector<BasicBlock*> *bblist){
   set<Instruction*> visited;
+  set<Instruction*> excluded;
+  map<BasicBlock*,double> tseq;
+  for(int i=0;i<bblist->size();i++){
+    tseq[(*bblist)[i]] = (*(*prebb)[i])[8];
+  }
 
-  for(auto &I : *this->BB){
-    if(!visited.count(&I)){
-      subgraphs->push_back(new list<Instruction*>);
-      set<Instruction*> excluded;
-      if(I.getName() != "fuse.sel")
-        traverseSubgraph(&I,&visited,&excluded,(*subgraphs)[subgraphs->size()-1]);
-      if((*subgraphs)[subgraphs->size()-1]->empty()){
-        delete (*subgraphs)[subgraphs->size()-1];
-        subgraphs->pop_back();
-      }
-      else{
-        bool removed = true;
-        while(removed){
-          removed = false;
-          for(auto I = (*subgraphs)[subgraphs->size()-1]->begin();
-              I != (*subgraphs)[subgraphs->size()-1]->end();++I){
-            if(isa<SelectInst>(*I)){
-              bool nouse = true;
-              for(int i=0;i<(*I)->getNumOperands();++i)
-                for(auto O = (*subgraphs)[subgraphs->size()-1]->begin();
-                    O != (*subgraphs)[subgraphs->size()-1]->end();++O)
-                    nouse &=  (*O) != (*I)->getOperand(i);
-              if(nouse){
-                (*subgraphs)[subgraphs->size()-1]->erase(I--);
-                removed = true;
-              }
-              if(!nouse){
-                nouse = true;
-                for(auto U : (*I)->users())
-                  nouse &= find((*subgraphs)[subgraphs->size()-1]->begin(),
-                      (*subgraphs)[subgraphs->size()-1]->end(),(Instruction*)U)
+  while( visited.size() != this->BB->size() ){
+    subgraphs->push_back(new list<Instruction*>);
+    excluded.clear();
+    for(auto &I : *this->BB){
+      if(isa<SelectInst>(&I) and (I.getName() == "fuse.sel" or I.getName() == 
+            "fuse.sel.safe") and !excluded.count(&I))
+        visited.insert(&I);
+      else if(!visited.count(&I))
+        traverseSubgraph(&I,&visited,&excluded,(*subgraphs)[subgraphs->size()-1], prebb, bblist,0,&tseq);
+    }
+
+    // Compute Sequential Time of each BB involved
+    for(auto I: *(*subgraphs)[subgraphs->size()-1]){
+      if(fuseMap->count(I))
+        for( auto Iorig : *(*fuseMap)[I] )
+          tseq[Iorig->getParent()] -= getSwDelay(I);
+    }
+    
+    // Remove Leading or Trailing Selects
+    bool removed = true;
+    while(removed){
+      removed = false;
+      for(auto I = (*subgraphs)[subgraphs->size()-1]->begin();
+        I != (*subgraphs)[subgraphs->size()-1]->end();++I){
+        if(isa<SelectInst>(*I)){
+          bool nouse = true;
+          for(int i=0;i<(*I)->getNumOperands() and nouse;++i)
+            for(auto O = (*subgraphs)[subgraphs->size()-1]->begin();
+                     O != (*subgraphs)[subgraphs->size()-1]->end() and nouse;++O)
+          nouse &=  (*O) != (*I)->getOperand(i);
+          if(nouse){
+            (*subgraphs)[subgraphs->size()-1]->erase(I--);
+            removed = true;
+          }
+          // Disabling this. Probably better if the output values are collapsed ino
+          // a single output, rather than avoiding a bunch of selects but having
+          // more output values
+          // TL;DR: Removing trailing selects increases number of outputs
+          if(!nouse){ 
+            nouse = true;
+            for(auto U : (*I)->users())
+              nouse &= find((*subgraphs)[subgraphs->size()-1]->begin(),
+                    (*subgraphs)[subgraphs->size()-1]->end(),(Instruction*)U)
                     == (*subgraphs)[subgraphs->size()-1]->end();
-                if(nouse){
-                  (*subgraphs)[subgraphs->size()-1]->erase(I--);
-                  removed = true;
-                }  
-              }
-            }
+            if(nouse){
+              (*subgraphs)[subgraphs->size()-1]->erase(I--);
+                removed = true;
+            }  
           }
         }
       }
     }
   }
-
-  /*for(auto List : subgraphs){
-    
-    for(auto I : List){
-
-    }
-  }*/
-
   return;
 }
-
-
-
 
 
 bool FusedBB::rCycleDetector(Instruction *I, set<Instruction*> *visited,
@@ -1570,13 +1875,117 @@ void FusedBB::fillSubgraphsBBs(Instruction *I,set<string>*subset){
 }
 
 
-float FusedBB::getTseqSubgraph(list<Instruction*> *subgraph, map<string,long> *iterMap){
+float FusedBB::getTseqSubgraph(list<Instruction*> *subgraph, map<string,long> *iterMap, map<BasicBlock*,float> *tseq_block){
   float tseq = 0;
   for(auto I=subgraph->begin();I!=subgraph->end();++I){
     if((*I)->getName().str().find("fuse.sel") == string::npos)
-      for(auto Iorig : *(*fuseMap)[*I])
-        tseq += getDelay(*I)*((*iterMap)[Iorig->getParent()->getName().str()]);
+      for(auto Iorig : *(*fuseMap)[*I]){
+        tseq += getSwDelay(*I)*((*iterMap)[Iorig->getParent()->getName().str()]);
+      if(!tseq_block->count(Iorig->getParent()))
+        (*tseq_block)[Iorig->getParent()] = 0;
+      (*tseq_block)[Iorig->getParent()] += getSwDelay(*I);
+        
+    }
   }
   return tseq;
 }
 
+
+void FusedBB::getDebugLoc(stringstream &output){
+  map<string,set<debug_desc> >files;
+  output << BB->getName().str() << ":\n";
+  for(auto &I : *this->BB){
+    if(this->fuseMap->count(&I)){
+      for(auto Iorig : *(*this->fuseMap)[&I]){
+        DebugLoc DL = Iorig->getDebugLoc();
+        if(DL){
+          int line = DL.getLine();
+          int col = DL.getCol();
+          string file = cast<DIScope>(DL.getScope())->getFilename().str();
+          string dir = cast<DIScope>(DL.getScope())->getDirectory().str();
+          debug_desc aux = {line,col,this->isMergedI(&I)};
+          files[dir+"/"+file].insert(aux);
+        } 
+      }
+    }
+  }
+  for(auto file : files){
+    ifstream source;
+    set<int> lines;
+    string sourcecode;
+    source.open(file.first, ifstream::in);
+    output << "\t" << file.first << ":\n\n";
+    for(auto line : file.second){
+      if(!lines.count(line.line)){
+        for(int i=0;i<line.line;++i)
+          getline(source,sourcecode);
+        int stop = sourcecode.find(")",line.col);
+        if(stop == string::npos)
+          stop = sourcecode.find("]",line.col);
+        if(stop == string::npos)
+          stop = sourcecode.find("}",line.col);
+        if(stop == string::npos)
+          stop = sourcecode.length();
+        if(stop != string::npos)
+          sourcecode.insert(stop,RESET);
+        string color = line.merged?GREEN:RED;
+        sourcecode.insert(line.col?line.col-1:line.col,color);
+        sourcecode = to_string(line.line)+sourcecode;
+        output << sourcecode << "\n";
+        source.seekg(0);
+      }
+      lines.insert(line.line);
+    }
+    output << "\n";
+    source.close();
+  }
+}
+
+void FusedBB::setOrigWeight(float orig_weight){
+  this->orig_weight = orig_weight;
+}
+float FusedBB::getOrigWeight(){
+  return this->orig_weight;
+}
+
+string FusedBB::getSelBB(Instruction *SelI, Value *Op){
+  string ret;
+
+  if(this->selMap->count(SelI)){
+    if(Op == SelI->getOperand(1)){
+      for(auto BB : *(*this->selMap)[SelI].first){
+        ret += BB->getName().str()+",";
+      }
+    }
+    else if(Op == SelI->getOperand(2)){
+      for(auto BB : *(*this->selMap)[SelI].second){
+        ret += BB->getName().str()+",";
+      }
+    }
+  }
+  ret += ".";
+  return ret;
+}
+
+pair<float,pair<float,float> > FusedBB::overheadCosts(map<string,long> *iterMap){
+  float ins, outs, invok;
+  ins = outs = invok = 0;
+  for(auto BBs : *this->mergedBBs)
+    invok += (*iterMap)[BBs->getName().str()];
+
+  if(this->liveInPos->size()){
+    for(auto E : *this->liveInPos){
+      for(auto In : *E){
+        ins += 1*(*iterMap)[In.first->getName().str()];
+      }
+    }
+  }
+  if(this->liveOutPos->size()){
+    for(auto E : *this->liveOutPos){
+      for(auto Out : *E){
+        outs += 1*(*iterMap)[Out.first->getName().str()];
+      }
+    }
+  }
+  return pair<float,pair<float,float> >(invok, pair<float,float>(ins,outs));
+}

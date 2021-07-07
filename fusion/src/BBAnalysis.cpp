@@ -37,7 +37,7 @@ bool areOpsMergeable(Value *opA, Value *opB, BasicBlock *A, BasicBlock *B,
   if(SubOp->count(opB)){
     sameOpAfterMerge = opA == (*SubOp)[opB];
   }
-	return (sameValue and isConstant) or (isSameType and isLiveIn and !isConstant) or (isSameType and isInstMerg and !isConstant and sameOpAfterMerge);
+	return (sameValue and isConstant) or (isSameType and isLiveIn) or (isSameType and isInstMerg and !isConstant and sameOpAfterMerge);
 }
 
 /**
@@ -81,6 +81,7 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
   bool samecall = true;
   if(isa<CallInst>(Ia) and isa<CallInst>(Ib))
     samecall = cast<CallInst>(Ia).getCaller() == cast<CallInst>(Ib).getCaller();
+  samecall &= !isa<InvokeInst>(Ia) and !isa<InvokeInst>(Ib);
   bool samegetelemptr = true;
   if(isa<GetElementPtrInst>(Ia) and isa<GetElementPtrInst>(Ib) and samety and numops)
     if(cast<PointerType>(Ia.getOperand(0)->getType())->getElementType()->isStructTy())
@@ -97,12 +98,12 @@ bool areInstMergeable(Instruction &Ia, Instruction &Ib){
  *
  * @param *BB The BasicBlock to analyze
  * @param *RAWdeps Map with a relation of dependences (TODO: deprecate this)
- * @param &Context The LLVM Context
  */
-void memRAWDepAnalysis(BasicBlock *BB, map<Value*,Value*> *RAWdeps, LLVMContext &Context){
+void memRAWDepAnalysis(BasicBlock *BB, map<Instruction*,set<Instruction*> *> *rawDeps){
   StoreInst *St;
   LoadInst *Ld;
   map<Value*,Instruction*> Wdeps;
+  map<Instruction*,int> storeDomain;
   map<Value*,int> StoreDomain;
   for (auto &I : *BB){
     // For each store, we record the address being used
@@ -112,23 +113,14 @@ void memRAWDepAnalysis(BasicBlock *BB, map<Value*,Value*> *RAWdeps, LLVMContext 
       else
         StoreDomain[St->getPointerOperand()] = 1;
       Wdeps[St->getPointerOperand()] = &I;
-      MDNode* StoreDom = MDNode::get(Context,ConstantAsMetadata::get(
-              ConstantInt::get(Context,APInt(64,StoreDomain[St->getPointerOperand()],false))));
-      St->setMetadata("fuse.storedomain",StoreDom);
+      storeDomain[&I] = StoreDomain[St->getPointerOperand()];
     }
     // If a Load has de same address as a store, we annotate the dependence
     if(Ld = dyn_cast<LoadInst>(&I)){
       if(Wdeps.count(Ld->getPointerOperand())){
-        RAWdeps->insert(pair<Value*,Value*>(Ld,Wdeps[Ld->getPointerOperand()]));
-	      SmallVector<Metadata*,32> Ops;
-        Ops.push_back(ValueAsMetadata::get(Ld));
-        MDNode *N = MDTuple::get(Context,Ops);
-        Wdeps[Ld->getPointerOperand()]->setMetadata("fuse.rawdep",N);
-        
-        //Ops.clear();
-        //Ops.push_back(ValueAsMetadata::get(Wdeps[Ld->getPointerOperand()])); 
-        //N = MDTuple::get(Context,Ops);
-        //Ld->setMetadata("fuse.wardep",N);
+        if(!rawDeps->count(Wdeps[Ld->getPointerOperand()]))
+          (*rawDeps)[Wdeps[Ld->getPointerOperand()]] = new set<Instruction*>;
+        (*rawDeps)[Wdeps[Ld->getPointerOperand()]]->insert(&I);
       }
     }
   }
@@ -154,7 +146,7 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
     for(int i = 0; i < I.getNumOperands(); ++i){
       Value *V = I.getOperand(i);
       if(isa<Instruction>(V) && cast<Instruction>(V)->getParent() != &BB or
-          isa<Argument>(V))
+          isa<Argument>(V) or isa<GlobalValue>(V))
         LiveIn->insert(V);
     }
     for(auto U : I.users()){
@@ -220,8 +212,8 @@ float dfsCrit(Instruction *I, BasicBlock *BB,map<Instruction*,float> *visited){
       if(tmp>cost)
         cost = tmp;
     }
-    (*visited)[I] = cost+getDelay(I);
-    return cost + getDelay(I);
+    (*visited)[I] = cost+getHwDelay(I);
+    return cost + getHwDelay(I);
   }
   return 0;
 }
@@ -291,7 +283,7 @@ pair<float,float> getCriticalPathCost(BasicBlock *BB){
  * @param *M LLVM Module
  */
 
-void getMetadataMetrics(BasicBlock *BB, vector<float> *data, Module *M){
+void getMetadataMetrics(BasicBlock *BB, vector<double> *data, Module *M){
   MDNode *N;
 	DataLayout DL  = M->getDataLayout();
   float orig_inst = 0;
@@ -303,12 +295,12 @@ void getMetadataMetrics(BasicBlock *BB, vector<float> *data, Module *M){
   float num_merges = 0;
   float num_sel = 0;
   float mem_time = 0;
-  float time = 0;
+  double time = 0;
   float num_ld = 0, num_st = 0;
   float power = 0;
   pair<float,float> crit_path = getCriticalPathCost(BB);
   for(auto I = BB->begin(); I != BB->end() ; ++I){
-    time += getDelay(&*I);
+    time += getSwDelay(&*I);
     if (isa<StoreInst>(I) or isa<LoadInst>(I)){
       if(isa<StoreInst>(I)){
         footprint += DL.getTypeSizeInBits(I->getOperand(0)->getType());

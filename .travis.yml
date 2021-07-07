@@ -4,21 +4,41 @@ dist: focal
 language: python
 python:
   - "3.6" # default 
-    #cache:
-    #  apt: true
 addons:
   apt:
     packages:
       - cmake
       - gcc-7
+      - flex
+
 language: python
+
+cache:
+  apt: true
+  pip: true
+  directories:
+    - llvm-project
+    - graphviz
+
+before_install:
+  - sudo apt-get -y install ninja-build clang
+  - DEPS_DIR="${TRAVIS_BUILD_DIR}/deps"
+  - mkdir ${DEPS_DIR} && cd ${DEPS_DIR}
+  - travis_retry wget --no-check-certificate https://cmake.org/files/v3.16/cmake-3.16.0-Linux-x86_64.tar.gz
+  - tar -xvf cmake-3.16.0-Linux-x86_64.tar.gz > /dev/null
+  - mv cmake-3.16.0-Linux-x86_64 cmake-install
+  - PATH=${DEPS_DIR}/cmake-install:${DEPS_DIR}/cmake-install/bin:$PATH
+  - cd ${TRAVIS_BUILD_DIR}
+
 install:
-  - ./compile_llvm.sh
+  - ./compile_llvm_minimal.sh
+  - ./compile_graphviz.sh
   - cd fusion
   - mkdir build
   - cd build
   - source ../../env.sh
   - cmake ../
   - make
+
 notifications:
   email: never

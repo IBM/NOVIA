@@ -20,8 +20,8 @@ name_ins="${name}_ins.bc"
 name_o="${name}_ins.o"
 name_ins_bin="${name}_ins.bin"
 
-LIBS="-lpython3.6m -lm -lomp -fopenmp -lFC"
-INLINE_STEPS=8
+LIBS="-lpython3.6m -lm -lomp -fopenmp"
+INLINE_STEPS=0
 export LD_LIBRARY_PATH=/home/dtrilla/git/tmp/fc/build/lib:$LD_LIBRARY_PATH
 
 #set -x
@@ -84,7 +84,7 @@ if [ ! -f $name_o ]; then
   $LLVM_BIN/llc -filetype=obj $name_ins 
 fi
 if [ ! -f $name_ins_bin ]; then
-  $LLVM_BIN/clang++ -no-pie $name_o $FUSE_LIB/arch/x86/CMakeFiles/timer.dir/timer.c.o $LIBS -L /home/dtrilla/git/tmp/fc/build/lib -o "$name_ins_bin"
+  $LLVM_BIN/clang++ -ggdb -no-pie $name_o $FUSE_LIB/arch/x86/CMakeFiles/timer.dir/timer.c.o $LIBS -L /home/dtrilla/git/tmp/fc/build/lib -o "$name_ins_bin"
   echo "done"
 else
   echo "reused"
@@ -101,6 +101,9 @@ fi
 
 echo "Processing Histogram"
 python $scriptDir/normalize.py histogram.txt weights.txt bblist.txt $3
+if [ $? -ne 0 ]; then
+  exit 1
+fi
 
 if [ $4 == "y" ]; then
   echo -n "Merging:"

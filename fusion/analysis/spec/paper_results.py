@@ -3,6 +3,8 @@ import sys
 
 bench = ["perlbench_s","mcf_s","omnetpp_s","xalancbmk_s","x264_s","deepsjeng_s",
          "leela_s","xz_s","pmoxxdlx_wk"]
+bench = ["perlbench_s","mcf_s","omnetpp_s","xalancbmk_s","x264_s","deepsjeng_s",
+         "leela_s","xz_s"]
 
 def main(argv):
     print("Benchmark,Percentage Execution Time,Average")

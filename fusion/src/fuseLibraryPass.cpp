@@ -29,6 +29,19 @@ static cl::opt<string> bbFileName("bbs",
     cl::desc("Specify file with BB names to merge"));
 static cl::opt<string> visualDir("graph_dir",
     cl::desc("Directory for graphviz files"),cl::Optional);
+static cl::opt<int> visLev("visualLevel",
+    cl::desc("Level of visualization output:\n"
+      "0: No visual output\n"
+      "1: Only Original BB DFGs\n"
+      "2: Only Merged BB DFGs\n"
+      "4: Only Split BB DFGs\n"
+      "3: Original and Merged BB DFGs\n"
+      "5: Original and Split BB DFGs\n"
+      "6: Merged and Split BB DFGs\n"
+      "7: All BB DFGs"),cl::Optional);
+static cl::opt<bool> debug("dbg",
+    cl::desc("Create bitcode with redundant original BBs to detect errors in"
+      " the inline/offload process"), cl::Optional);
 static cl::opt<string> dynamicInfoFile("dynInf",
     cl::desc("File with profiling information per BB"),cl::Optional);
 static cl::opt<string> excludeList("excl",
@@ -57,7 +70,7 @@ namespace {
 		static char ID;
 		vector<pair<string,BasicBlock*> > bbs;
 		Function *Foff;
-    vector<vector<float>* > prebb, fused, postbb, last;
+    vector<vector<double>* > prebb, fused, postbb, last;
 
 		mergeBBList() : ModulePass(ID) {}
 
@@ -74,12 +87,12 @@ namespace {
       // TODO: Unless specific changes in the implementation are made:
       // Do not alter anything before Efficiency
       // Merit must be last always
-      stats << "BB,Original Inst (Sum(BBsize)),Maximum Stacked Merges,Number" 
-        " of Merged Instructions,Num Inst,Num Loads,Num Stores,Num Muxs (S"
-        "elects),Other Instructions,Sequential Time,Memory Footprint (bits)"
-        ",Critical Path Communication,Critical Path Computation,Area,"
-        "Static Power,Dynamic Power,Efficiency,%DynInstr,Saved Area,Overhead Area,"
-        "%Saved Area,SpeedUp,MergedBBs,Area Efficiency,Merit\n";
+      stats << "Orig\n";
+      stats << "BB,Original Inst,Maximum Merges,Number" 
+        " of Merges,Size,Num Loads,Num Stores,Num Muxs"
+        ",Other Instructions,Tseq,Memory Footprint (bits)"
+        ",Critical Path Communication,CritPath,Area,"
+        "Static Power,Dynamic Power,Efficiency,Weight\n";
 
       // Read the dynamic info file
       readDynInfo(dynamicInfoFile,&profileMap, &iterMap);
@@ -116,14 +129,18 @@ namespace {
             if( BB.getName() == bbs[i].first)
               bbs[i].second = &BB;
 
-      for(auto bb : bbs)
+      for(auto bb : bbs){
+        if(!visualDir.empty() and visLev&1)
+          drawBBGraph(bb.second,(char*)("o"+bb.second->getName().str()).c_str(),
+              visualDir);
         if(!bb.second){
           errs() << "Could not find BB: " << bb.first << "\n";
           exit(0);
         }
+      }
 
       for(int i = 0; i < bbs.size(); ++i){
-        prebb.push_back(new vector<float>);
+        prebb.push_back(new vector<double>);
         separateBr(bbs[i].second);
         getMetadataMetrics(bbs[i].second,prebb[prebb.size()-1],&M);
         prebb[prebb.size()-1]->push_back(profileMap[bbs[i].second->getName().str()]);
@@ -132,19 +149,29 @@ namespace {
       
       //STATS
       for(int i= 0; i < prebb.size(); ++i){
-        stats << bbList[i]->getName() << ",";
+        stats << bbList[i]->getName();
         for(int j = 0; j < prebb[i]->size(); ++j){
-          stats << format("%.5e",(*prebb[i])[j]) << ",";
+          stats << ',' << format("%.5e",(*prebb[i])[j]);
         }
         stats << "\n";
       }
       stats << "\n";
+          
+      stats << "Merged\n";
+      stats << "BB,Original Inst,Maximum Merges,Number" 
+        " of Merges,Size,Num Loads,Num Stores,Num Muxs"
+        ",Other Instructions,Tseq,Memory Footprint (bits)"
+        ",Critical Path Communication,CritPath,Area,"
+        "Static Power,Dynamic Power,Efficiency,Weight,Saved Area,Overhead Area,"
+        "Relative Saved Area,SpeedUp,MergedBBs,Area Efficiency,Merit\n";
+
 
       // Merge Orderings
       vector<vector<int> > order;
       vector<pair<float,FusedBB*> > vCandidates;
       vector<BasicBlock*> unmergedBBs;
       float area_threshold = 10000000;
+      float area_core = 78609;
       vector<vector<vector<float> > > evol;
       bool go_hw = true;
 
@@ -163,7 +190,7 @@ namespace {
         int evol_index = evol.size()-1;
         vector<bool> fused_index(unmergedBBs.size(),true);
         vector<FusedBB*> FusedBBs(unmergedBBs.size());
-        vector<vector<float>*> fused(unmergedBBs.size());
+        vector<vector<double>*> fused(unmergedBBs.size());
         while(fits_and_improves){
           int i =0;
           map<int,int> index_map;
@@ -177,7 +204,7 @@ namespace {
             FusedBBs[i]->mergeBB(unmergedBBs[j]);
             index_map.insert(pair<int,int>(i,j));
     
-            fused[i] = new vector<float>;
+            fused[i] = new vector<double>;
             FusedBBs[i]->getMetrics(fused[i],&M);
             //getMetadataMetrics(FusedBBs[i]->getBB(),fused[i],&M);
             ++i;
@@ -197,17 +224,23 @@ namespace {
               float overhead_area = FusedBBs[i]->getAreaOverhead();
               merit = getMerit(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap,
                   &iterMap);
-              if( saved_area > max_saved_area)
+              if( saved_area > max_saved_area){
                 max_index = i;
-              else if (saved_area == max_saved_area)
-                if(merit > max_merit)
+                max_merit = merit;
+                max_saved_area = saved_area;
+              }
+              else if ( saved_area == max_saved_area){
+                if( merit >= max_merit){
                   max_index = i;
-              //max_index = saved_area >= max_saved_area ? i: max_index;
-              max_merit = merit > max_merit? merit: max_merit;
-              max_saved_area = saved_area > max_saved_area? saved_area: max_saved_area;
+                  max_merit = merit;
+                  max_saved_area = saved_area;
+                }
+              }
+              
               evol[evol_index][i].push_back(saved_area);
               fused[i]->push_back(getWeight(&bbList,&prebb,fused[i],FusedBBs[i],
                     &profileMap,&iterMap));
+              FusedBBs[i]->setOrigWeight((*fused[i])[fused[i]->size()-1]);
               fused[i]->push_back(saved_area);
               fused[i]->push_back(overhead_area);
               fused[i]->push_back(relative_saved_area);
@@ -226,8 +259,10 @@ namespace {
           for(int i = 0; i < FusedBBs.size();++i){
             if(fused_index[i]){
               //last_merit = i == max_index? (*fused[i])[fused[i]->size()-1]:last_merit;
-              if( (*fused[i])[fused[i]->size()-1] < 0 or i != max_index or 
-                  (*fused[i])[fused[i]->size()-6] < 0){
+
+              if( (i != max_index 
+                  or (*fused[i])[fused[i]->size()-1] < 0 
+                  or (*fused[i])[fused[i]->size()-7] < 0 ) and !(i == max_index and force)){
                 delete FusedBBs[i];
                 deleted++;
               }  
@@ -239,17 +274,15 @@ namespace {
             count_fused += e ? 1 : 0;
   
           if(max_index >= 0 and deleted != count_fused){
-            stats << FusedBBs[max_index]->getName()  << ",";
+            stats << FusedBBs[max_index]->getName();
             for(int j = 0; j < fused[max_index]->size(); ++j){
-              stats << format("%.5e",(*fused[max_index])[j]) << ",";
+              stats << "," << format("%.5e",(*fused[max_index])[j]);
             }
             stats<<"\n";
 
             candidate = FusedBBs[max_index];
             last_merit = (*fused[max_index])[fused[max_index]->size()-1];
             fused_index[max_index] = false;
-            if(!visualDir.empty())
-              drawBBGraph(candidate,(char*)candidate->getName().c_str(),visualDir);
             unmergedBBs.erase(unmergedBBs.begin()+index_map[max_index]);
             vCandidates.push_back(pair<float,FusedBB*>(max_saved_area,candidate));
           }
@@ -262,8 +295,9 @@ namespace {
           fused.clear();
         }
       }
-      
-      
+
+      // Evolve stats
+      /* 
       for(auto P : evol){
         stats << "\n";
         int i = 0;
@@ -283,6 +317,7 @@ namespace {
         }
         stats << "\n";
       }
+      */
     
 			if(vCandidates.size()){
         int max_sel = 0;
@@ -330,75 +365,124 @@ namespace {
 
 
         std::sort(vCandidates.begin(),vCandidates.end(),compareFused);
-        stats << "Graph,Subgraph,Area Savings,Area,Speedup,BBs,Size,Tseq,CritPath,Weight,Area Efficiency\n";
+        stats << "\nSplits\n";
+        stats << "BB,Relative Saved Area,Area,SpeedUp,MergedBBs,Size,Tseq,CritPath,Weight,Area Efficiency,Relative SpeedUp,OrigWeight,MergeNum\n";
         vector<vector<string> > list_bbs;
+        stringstream tseq_block;
+        stringstream debug_log;
+        stringstream overhead_log;
+        overhead_log << "BB,AvgIns,AvgOuts\n";
+        float total_invokes = 0;
+        float total_ins = 0;
+        float total_outs = 0;
+
         int num_candidates = 0;
         float acum_sub_area = 0;
         float acum_orig_area = 0;
+        float acum_sub_time = 0; 
+        float total_time = 1;
         int total_subgraphs = 0;
+        stats.flush(); // Flush buffer before dangerous operations
+        vector<pair<FusedBB*,pair<float,float> > > FusedResults;
         for(int spl=0;spl<vCandidates.size();++spl){
           vector<list<Instruction*>*> subgraphs;
-          vCandidates[spl].second->splitBB(&subgraphs);
+          vCandidates[spl].second->splitBB(&subgraphs,&prebb,&bbList);
           /*for(auto *L : subgraphs){
             errs() << "Graph\n";
             for(auto *I : *L)
               I->dump();
           }*/
           vector<vector<float>*> data;
-          pair<float,float> tmp_areas;
+          vector<pair<float,float> > tmp_areas;
           vector<float> tseq_sub;
-          tmp_areas = getSubgraphMetrics(&bbList,&prebb,NULL,vCandidates[spl].second,
-              &profileMap,&iterMap,&subgraphs,&data,&tseq_sub);
-          if(1)
+          vector<map<BasicBlock*,float>*> tseq_block_aux;
+          map<Value*,Value*> VMap;
+          getSubgraphMetrics(&bbList,&prebb,NULL,vCandidates[spl].second,
+              &profileMap,&iterMap,&subgraphs,&data,&tseq_sub,&tseq_block_aux,&tmp_areas);
+
+          if(!visualDir.empty() and visLev&2)
             drawBBGraph(vCandidates[spl].second,(char*)(vCandidates[spl]
                 .second->getName()).c_str(),visualDir,
                 &subgraphs);
-          //errs() << vCandidates[spl].second->getName() << "\n";
           
           for(int i=0;i<subgraphs.size();++i){
             if(subgraphs[i]->size() > 0){
               set<string> subset;
-              vector<float> vs;
+              vector<double> vs;
               FusedBB *splitBB = new FusedBB(vCandidates[spl].second,subgraphs[i]);
+              splitBB->KahnSort();
               splitBB->getBB()->setName(splitBB->getName()+string("spl")+to_string(i));
               splitBB->getMetrics(&vs,&M);
+
+
             
-              vector<float> orig_data;
+              vector<double> orig_data;
               FusedBB *tmp = vCandidates[spl].second;
               for(auto *I: *(subgraphs[i])){
                 tmp->fillSubgraphsBBs(I,&subset);
               }
               vCandidates[spl].second->getMetrics(&orig_data,&M);
               float orig_tseq = getTseq(&bbList,&prebb,NULL,vCandidates[spl].second,&profileMap,&iterMap,&subset);
-              orig_tseq = vCandidates[spl].second->getTseqSubgraph(subgraphs[i],&iterMap);
+              //orig_tseq = vCandidates[spl].second->getTseqSubgraph(subgraphs[i],&iterMap);
               float orig_cp = orig_data[11];
               float orig_weight = getWeight(&bbList,&prebb,&orig_data,vCandidates[spl].second,&profileMap,&iterMap);
+              orig_weight = vCandidates[spl].second->getOrigWeight();
               float red_tseq = orig_tseq/tseq_sub[i];
               float new_weight = orig_weight/red_tseq;
               float iterations = 0;
-            
               for(auto name: subset){
                 iterations += iterMap[name];
               }
-              if((*data[i])[0] < 1){
-                Function *fSpl = splitBB->createInline(&M);
-                splitBB->insertInlineCall(fSpl);
-                acum_sub_area += tmp_areas.first;
-                acum_orig_area += tmp_areas.second;
+              float sub_speed = 1/((1-new_weight)+new_weight/(tseq_sub[i]/(vs[11]*iterations)));
+              if(new_weight > orig_weight){
+                errs() << "ERROR:\n";
+                errs() << tseq_sub[i] << " " << orig_tseq << " " << i << bbList[i]->getName() << "\n";
+                //exit(1);
+              }
+
+              if(((*data[i])[0] < 1 and sub_speed > 1) or force){
+                Function *fSpl;
+                fSpl = splitBB->createInline(&M);
+                //splitBB->insertInlineCall(fSpl,&VMap);
+                splitBB->getDebugLoc(debug_log);
+                acum_sub_area += tmp_areas[i].first;
+                acum_orig_area += tmp_areas[i].second;
+                acum_sub_time += 1-1/sub_speed;
+                total_time -= new_weight;
                 list_bbs.push_back(vector<string>());
                 list_bbs[list_bbs.size()-1].push_back(splitBB->getName());
                 for(auto name: subset){
                   list_bbs[list_bbs.size()-1].push_back(name);
                 }
-                if(1)
-                  drawBBGraph(splitBB,(char*)splitBB->getName().c_str(),visualDir);
+                if(!visualDir.empty() and visLev&4)
+                  drawBBGraph(splitBB,(char*)to_string(spl*100+i).c_str(),visualDir);
+                  //drawBBGraph(splitBB,(char*)splitBB->getName().c_str(),visualDir);
                 total_subgraphs++;
+              
+                // Stats for partial sequential times of inlined BBs
+                tseq_block << splitBB->getName() << ",";
+                for(auto elem : *tseq_block_aux[i]){
+                  tseq_block << elem.first->getName().str() << "," << 
+                    std::setw(5) << elem.second << ",";
+                }
+                tseq_block << "\n";
+
+                // Stats for software overheads
+                pair<float,pair<float,float> > auxO = splitBB->overheadCosts(&iterMap);
+                overhead_log << splitBB->getName() << "," << 
+                  auxO.second.first/auxO.first << "," << 
+                  auxO.second.second/auxO.first << "\n";
+                total_invokes += auxO.first;
+                total_ins += auxO.second.first;
+                total_outs += auxO.second.second;
+              
+                FusedResults.push_back(pair<FusedBB*,pair<float,float> >(splitBB,
+                      pair<float,float>(vs[12],sub_speed)));
               }
               else{
                 delete splitBB;
               }
 
-              float sub_speed = 1/((1-new_weight)+new_weight/((orig_tseq)/(vs[11]*iterations)));
               data[i]->push_back(vs[12]);
               data[i]->push_back(sub_speed);
               data[i]->push_back(subset.size());
@@ -407,18 +491,23 @@ namespace {
               data[i]->push_back(vs[11]);
               data[i]->push_back(new_weight);
               data[i]->push_back(sub_speed/vs[12]);
+              data[i]->push_back(tseq_sub[i]/vs[11]*iterations); // SpeedUp Relative to BB
+              data[i]->push_back(orig_weight);
+              data[i]->push_back(spl);
+
+
               }
             }
 
             int x = 0;
             for(auto elem : data){
-              if((*elem)[0] < 1){
-                stats << list_bbs[num_candidates+x][0] << ',';
-                for(int l = 1; l < list_bbs[num_candidates+x].size(); ++l)
+              if((*elem)[0] < 1 and (*elem)[2] > 1){
+                stats << list_bbs[num_candidates+x][0];
+                /*for(int l = 1; l < list_bbs[num_candidates+x].size(); ++l)
                   stats << list_bbs[num_candidates+x][l];
-                stats << ',';
+                stats << ',';*/
                 for(auto datum : *elem)
-                  stats << datum <<  ",";
+                  stats << "," << datum;
                 stats << "\n";
                 ++x;
               }
@@ -432,19 +521,101 @@ namespace {
         int count = 0;
         stats << "\nListings\n";
         for(auto elem : list_bbs){
-          for(auto name : elem)
-            stats << name << ",";
+          bool first = true;
+          for(auto name : elem){
+            if(first){
+              stats << name;
+              first=false;
+            }
+            else{
+              stats << "," << name;
+            }
+          }
           stats << "\n";
           count++;
         }
+        for(auto E : FusedResults)
+          E.first->removeOrigInst();
+
         stats << "\n";
-        stats << "Global Area Savings\n";
+        stats << "TseqBlocks\n";
+        stats << tseq_block.str() << "\n";
+
+        stats << "\n";
+        stats <<"Software Overhead\n";
+        stats << overhead_log.str();
+        stats << "AvgTotal," << total_ins/total_invokes << "," << 
+          total_outs/total_invokes << "\n";
+
+        stats << "\n";
+        stats << "TotalAreaSavings,";
         stats << acum_sub_area/acum_orig_area << "\n";
+        stats << "TotalSpeedUp,";
+        stats << 1/(1-acum_sub_time) << "\n";
+        
+        
+        for(auto it = FusedResults.begin(); it != FusedResults.end();)
+          if(it->second.second < 1.001)
+            FusedResults.erase(it);
+          else
+            ++it;
+
+        std::sort(FusedResults.begin(),FusedResults.end(),mysort);
+
+        int thld = 0;
+        while(thld < FusedResults.size() and FusedResults[thld].second.first <= 
+            area_core*0.05)
+          thld++;
+
+        pair<float,float> bestBin5 = BinPacking(FusedResults.begin(),
+            FusedResults.begin()+thld,0,1,area_core*0.05);
+        stats << "TotalSpeedUpPerCoreThreshold5,";
+        stats << bestBin5.second << "\n";
+        stats << "TotalAreaPerCoreThreshold5,";
+        stats << bestBin5.first/area_core << "\n";
+        stats.flush(); // Flush buffer before dangerous operations
+
+        thld = 0;
+        while(thld < FusedResults.size() and FusedResults[thld].second.first <=
+            area_core*0.1)
+          thld++;
+        pair<float,float> bestBin10 = BinPacking(FusedResults.begin(),
+            FusedResults.begin()+thld,0,1,area_core*0.1);
+        stats << "TotalSpeedUpPerCoreThreshold10,";
+        stats << bestBin10.second << "\n";
+        stats << "TotalAreaPerCoreThreshold10,";
+        stats << bestBin10.first/area_core << "\n";
+        stats.flush(); // Flush buffer before dangerous operations
+
+        thld = 0;
+        while(thld < FusedResults.size() and FusedResults[thld].second.first <= 
+            area_core*0.2)
+          thld++;
+        pair<float,float> bestBin20 = BinPacking(FusedResults.begin(),
+            FusedResults.begin()+thld,0,1,area_core*0.2);
+        stats << "TotalSpeedUpPerCoreThreshold20,";
+        stats << bestBin20.second << "\n";
+        stats << "TotalAreaPerCoreThreshold20,";
+        stats << bestBin20.first/area_core << "\n";
+        stats.flush(); // Flush buffer before dangerous operations
+
+        
+        raw_fd_ostream debuglog("source.log",EC);
+        debuglog << debug_log.str() << "\n";
+        
 
         ////////////////////////
 				//vCandidates[0].second->insertOffloadCall(Foff,&bbList);
         //vCandidates.erase(vCandidates.begin());
 			}
+
+      set<BasicBlock*> visited;
+      for(auto E : vCandidates)
+        for(auto BB : bbs)
+          if(E.second->isMergedBB(BB.second) and !visited.count(BB.second)){
+            KahnSort(BB.second);
+            visited.insert(BB.second);
+          }
      
       for(auto E : vCandidates) 
         delete E.second;
@@ -495,6 +666,10 @@ namespace {
 		renameSuffix() : ModulePass(ID) {}
 
 		bool runOnModule(Module &M) override{
+      // Patch for SPEC
+      GlobalValue *progname = M.getNamedValue("progname");
+      if(progname)
+        progname->setName(progname->getName()+suffix);
       for(Function &F: M){
         if(!F.isIntrinsic())
           F.setName(F.getName()+suffix);

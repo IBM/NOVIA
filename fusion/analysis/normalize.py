@@ -1,6 +1,10 @@
 import sys
+import os
 
 def main():
+    if not os.path.exists(sys.argv[1]):
+        sys.exit(1)
+
     fi = open(sys.argv[1])
     fo = open(sys.argv[2],'w+')
     total = 0
@@ -23,9 +27,19 @@ def main():
     fo.close()
 
     bblist = open(sys.argv[3],'w+')
-    for i in range(min(len(sorted_list),int(sys.argv[4]))):
-        bblist.write(sorted_list[i][0])
-        bblist.write('\n')
+    amount = float(sys.argv[4])
+    if amount < 1 and amount > 0:
+        wtotal = 0.0
+        i = 0
+        while wtotal < amount:
+            wtotal += sorted_list[i][1]
+            bblist.write(sorted_list[i][0])
+            bblist.write('\n')
+            i += 1
+    else:
+        for i in range(min(len(sorted_list),int(sys.argv[4]))):
+            bblist.write(sorted_list[i][0])
+            bblist.write('\n')
     bblist.close()
 
 
