@@ -1,1 +1,2 @@
-add_library(timer OBJECT timer.c)
+add_library(timer OBJECT timer.cpp)
+

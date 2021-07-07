@@ -205,7 +205,7 @@ void readDynInfo(string filename, map<string,double>* profileMap,
 
 bool mysort(pair<FusedBB*,pair<float,float> >& it1, 
     pair<FusedBB*,pair<float,float> >& it2){
-  return it1.second.first < it2.second.first;
+  return it1.second.first > it2.second.first;
 }
 
 pair<float,float> BinPacking(vector<pair<FusedBB*,pair<float,float> > >::iterator it, 
@@ -225,5 +225,33 @@ pair<float,float> BinPacking(vector<pair<FusedBB*,pair<float,float> > >::iterato
   else{
     return without;
   }
+}
 
+pair<float,float> BinPacking2(vector<pair<FusedBB*,pair<float,float> > >::iterator it, 
+    vector<pair<FusedBB*,pair<float,float> > >::iterator end, float area, float speedup,
+    vector<float> *area_limit, vector<pair<float,float> > *results){
+  bool done = true;
+  pair<float,float> with, without;
+  with.first = with.second = without.first = without.second = 0;  
+  if( it == end )
+    return pair<float,float>(area,speedup);
+
+  without = BinPacking2(next(it),end,area,speedup,area_limit,results);
+  if(area+it->second.first <= (*area_limit)[area_limit->size()-1])
+      with = BinPacking2(next(it),end,area+it->second.first,
+        1/(1-((1-1/speedup)+(1-1/it->second.second))),area_limit,results);
+  if(with.second > without.second){
+    for(int i=0;i<area_limit->size();++i){
+      if(with.first <= (*area_limit)[i] and with.second > (*results)[i].second)
+        (*results)[i] = with;
+    }
+    return with;
+  }
+  else{
+    for(int i=0;i<area_limit->size();++i){
+      if(without.first <= (*area_limit)[i] and without.second > (*results)[i].second)
+        (*results)[i] = without;
+    }
+    return without;
+  }
 }
