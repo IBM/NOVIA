@@ -236,7 +236,8 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
         agsafeset(n,(char*)"fillcolor",(char*)"red",(char*)"white");
         agsafeset(n,(char*)"fontcolor",(char*)"white",(char*)"black");
       }
-      else if(I.getName() == "fuse.sel" or I.getName() == "fuse.sel.safe"){
+      else if(I.getName().str().find("fuse.sel") != string::npos or
+              I.getName().str().find("fuse.sel.safe") != string::npos ){
         agsafeset(n,(char*)"style",(char*)"filled",(char*)"");
         agsafeset(n,(char*)"fillcolor",(char*)"#ffd700",(char*)"white");
         agsafeset(n,(char*)"fontcolor",(char*)"black",(char*)"black");
@@ -278,7 +279,9 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
               else{
                 names[name] = 0;
               }
-              m = agnode(G,(char*)name.c_str(),1);
+              string aux = "inVal"+to_string(names["inVal"]++);
+              m = agnode(G,(char*)aux.c_str(),1);
+              //m = agnode(G,(char*)name.c_str(),1);
               agsafeset(m,(char*)"shape",(char*)"rarrow",(char*)"");
               agsafeset(m,(char*)"style",(char*)"filled",(char*)"");
               agsafeset(m,(char*)"color",(char*)"red",(char*)"");
@@ -294,9 +297,10 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
         n = visited[cast<Value>(&I)];
         if(m){
           e = agedge(G,m,n,NULL,1);
-          if(I.getName() == "fuse.sel" or I.getName() == "fuse.sel.safe"){
+          if(I.getName().str().find("fuse.sel") != string::npos or
+             I.getName().str().find("fuse.sel.safe") != string::npos ){
             string bbs = fBB->getSelBB(&I,op);
-            agsafeset(e,(char*)"label",(char*)bbs.c_str(),(char*)"");
+            //agsafeset(e,(char*)"label",(char*)bbs.c_str(),(char*)"");
           }  
         }
       }  

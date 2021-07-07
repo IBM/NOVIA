@@ -224,12 +224,15 @@ namespace {
               float overhead_area = FusedBBs[i]->getAreaOverhead();
               merit = getMerit(&bbList,&prebb,fused[i],FusedBBs[i],&profileMap,
                   &iterMap);
+              //if( merit > max_merit){
               if( saved_area > max_saved_area){
                 max_index = i;
                 max_merit = merit;
                 max_saved_area = saved_area;
               }
+              //else if( merit == max_merit){
               else if ( saved_area == max_saved_area){
+                //if( saved_area >= max_saved_area){
                 if( merit >= max_merit){
                   max_index = i;
                   max_merit = merit;
@@ -435,12 +438,13 @@ namespace {
               }
               float sub_speed = 1/((1-new_weight)+new_weight/(tseq_sub[i]/(vs[11]*iterations)));
               if(new_weight > orig_weight){
-                errs() << "ERROR:\n";
+                errs() << "WARNING: Weighted sequential time after split is greater than the original full BB sequential time\n";
                 errs() << tseq_sub[i] << " " << orig_tseq << " " << i << bbList[i]->getName() << "\n";
                 //exit(1);
               }
 
               if(((*data[i])[0] < 1 and sub_speed > 1) or force){
+                
                 Function *fSpl;
                 fSpl = splitBB->createInline(&M);
                 //splitBB->insertInlineCall(fSpl,&VMap);
@@ -555,18 +559,44 @@ namespace {
         
         
         for(auto it = FusedResults.begin(); it != FusedResults.end();)
-          if(it->second.second < 1.001)
+          if(it->second.second < 1.005 or it->second.first > area_core)
             FusedResults.erase(it);
           else
             ++it;
 
         std::sort(FusedResults.begin(),FusedResults.end(),mysort);
+        vector<float> area_limits = { area_core*(float)0.01,
+                                      area_core*(float)0.02,
+                                      area_core*(float)0.03,
+                                      area_core*(float)0.05,
+                                      area_core*(float)0.07,
+                                      area_core*(float)0.10,
+                                      area_core*(float)0.13,
+                                      area_core*(float)0.15,
+                                      area_core*(float)0.25,
+                                      area_core*(float)0.45,
+                                      area_core*(float)0.55,
+                                      area_core*(float)0.8,
+                                      area_core,
+        };
+        vector<pair<float,float> > bestBin(area_limits.size(),pair<float,float>(0,0));
+        BinPacking2(FusedResults.begin(),FusedResults.end(),0,1,&area_limits,&bestBin);
+        for(int i=0;i<area_limits.size();i++){
+          stats << "TotalSpeedUpPerCoreThreshold" << (int)(area_limits[i]/area_core*100) << \
+            "," << bestBin[i].second << "\n";
+          stats << "TotalAreaPerCoreThreshold" << (int)(area_limits[i]/area_core*100) << \
+            "," << bestBin[i].first/area_core << "\n";
 
+        }
+        stats.flush();
+
+
+        /*
         int thld = 0;
         while(thld < FusedResults.size() and FusedResults[thld].second.first <= 
             area_core*0.05)
           thld++;
-
+        
         pair<float,float> bestBin5 = BinPacking(FusedResults.begin(),
             FusedResults.begin()+thld,0,1,area_core*0.05);
         stats << "TotalSpeedUpPerCoreThreshold5,";
@@ -598,6 +628,7 @@ namespace {
         stats << "TotalAreaPerCoreThreshold20,";
         stats << bestBin20.first/area_core << "\n";
         stats.flush(); // Flush buffer before dangerous operations
+        */
 
         
         raw_fd_ostream debuglog("source.log",EC);
@@ -676,6 +707,10 @@ namespace {
 		  	for(BasicBlock &BB: F)
           BB.setName(BB.getName()+suffix);
       }
+      for(auto &G : M.globals())
+        G.setName(G.getName()+suffix);
+      for(auto &A : M.aliases())
+        A.setName(A.getName()+suffix);
 			return true;
 		}
 	};
