@@ -9,8 +9,8 @@ add_library(fusionlib SHARED
 add_library(instrumentlib SHARED
   instrumentLibraryPass.cpp)
 
-add_executable(proflib profileLibraryPass.cpp)
-target_compile_options(proflib PRIVATE -ggdb -O0 -fno-rtti)
+add_library(proflib SHARED
+  profileLibraryPass.cpp)
 
 #This is wrong but will work for now
 
