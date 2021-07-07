@@ -1,5 +1,5 @@
 GXX := g++
-CFLAGS := -O0 -std=c++11
+CFLAGS := -O0 -std=c++11 -g
 
 LLVM_ROOT := ../../../llvm-project/build/bin/
 LLVM := $(LLVM_ROOT)llvm

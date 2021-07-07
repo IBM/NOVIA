@@ -14,3 +14,5 @@ echo "extracting storeorder"
 (cd storeorder  && ./extract.sh)
 echo "extracting incremental"
 (cd incremental  && ./extract.sh)
+echo "extracting test_loops"
+(cd loops_test && ./extract.sh)

@@ -29,3 +29,4 @@ using namespace llvm;
 using namespace std;
 
 void separateBr(BasicBlock *BB);
+void KahnSort(BasicBlock *BB);

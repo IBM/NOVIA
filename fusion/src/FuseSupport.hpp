@@ -30,3 +30,7 @@ float getSavedArea(vector<BasicBlock*>*,vector<vector<double>*>*,vector<double> 
 float getRelativeSavedArea(vector<BasicBlock*>*,vector<vector<double>*>*,vector<double> *, FusedBB*,
     map<string,double>*,map<string,long>*);
 void readDynInfo(string, map<string,double>*, map<string,long>*);
+pair<float,float> BinPacking(vector<pair<FusedBB*,pair<float,float> > >::iterator, 
+    vector<pair<FusedBB*,pair<float,float> > >::iterator, float, float, float);
+
+bool mysort(pair<FusedBB*,pair<float,float> >&, pair<FusedBB*,pair<float,float> >&);

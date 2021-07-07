@@ -8,7 +8,7 @@ using namespace llvm;
 // Delay for operation in cycles
 // Setting it to 1 cycle
 static map<unsigned, unsigned> swdelay = {
-  {Instruction::Br,1},
+  {Instruction::Br,0},
   {Instruction::Add,1},
   {Instruction::Sub,1},
   {Instruction::Mul,1},
@@ -44,8 +44,8 @@ static map<unsigned, unsigned> swdelay = {
   {Instruction::PHI,1},
   {Instruction::Call,1},
   {Instruction::Invoke,1},
-  {Instruction::Switch,1},
-  {Instruction::Ret,1},
+  {Instruction::Switch,0},
+  {Instruction::Ret,0},
   {Instruction::FNeg,1},
   {Instruction::FAdd,1},
   {Instruction::FSub,1},
