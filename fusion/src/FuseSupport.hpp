@@ -29,7 +29,7 @@ float getSavedArea(vector<BasicBlock*>*,vector<vector<double>*>*,vector<double> 
     map<string,double>*,map<string,long>*);
 float getRelativeSavedArea(vector<BasicBlock*>*,vector<vector<double>*>*,vector<double> *, FusedBB*,
     map<string,double>*,map<string,long>*);
-void readDynInfo(string, map<string,double>*, map<string,long>*);
+void readDynInfo(string, map<string,double>*, map<string,double>*, map<string,long>*);
 pair<float,float> BinPacking(vector<pair<FusedBB*,pair<float,float> > >::iterator, 
     vector<pair<FusedBB*,pair<float,float> > >::iterator, float, float, float);
 pair<float,float> BinPacking2(vector<pair<FusedBB*,pair<float,float> > >::iterator, 

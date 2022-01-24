@@ -183,7 +183,7 @@ float getRelativeSavedArea(vector<BasicBlock*> *bblist,vector<vector<double>*> *
   return ((*fused)[12]/tarea);
 }
 
-void readDynInfo(string filename, map<string,double>* profileMap,
+void readDynInfo(string filename, map<string,double>* profileMap, map<string,double> *tCycleMap,
     map<string,long>* iterMap){
   fstream file;
 
@@ -196,9 +196,11 @@ void readDynInfo(string filename, map<string,double>* profileMap,
 
   string bb_name;
   double sigvalue = 0;
+  double tvalue = 0;
   long itervalue = 0;
-	while(file >> bb_name >> sigvalue >> itervalue){
+	while(file >> bb_name >> sigvalue >> tvalue >> itervalue){
 		(*profileMap)[bb_name] = sigvalue;
+    (*tCycleMap)[bb_name] = tvalue;
     (*iterMap)[bb_name] = itervalue;
   }
 }

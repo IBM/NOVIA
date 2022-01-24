@@ -2,8 +2,8 @@
 
 //FORCE_INLINE volatile
 extern "C" unsigned long int novia_time(void){
-  unsigned long a, d;
+  unsigned long a, b, c;
   
-  __asm__ volatile("rdtscp" : "=a" (a), "=d" (d));
-  return (a|(d << 32));
+  __asm__ volatile("rdcycle %0\n\t" : "=r" (a));
+  return a;
 }

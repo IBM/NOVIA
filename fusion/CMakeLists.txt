@@ -5,6 +5,9 @@ project(fusion VERSION 1.0 DESCRIPTION "LLVM fusion passes")
 
 #set(LLVM_ROOT "${CMAKE_CURRENT_SOURCE_DIR}../../llvm-project/build/" CACHE PATH "Root of LLVM install.")
 set(CMAKE_PREFIX_PATH "$ENV{LLVM_ROOT}/bin/")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_CXX_STANDARD 17)
 
 if( NOT EXISTS $ENV{LLVM_ROOT}/include/llvm )
 	message(FATAL_ERROR "LLVM_ROOT ($ENV{LLVM_ROOT}) is not a valid LLVM install.

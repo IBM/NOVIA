@@ -2,7 +2,7 @@
 #include "Maps.hpp"
 
 //TODO: Check if we have to create a (new) GV or we can just get one with 
-//the same value troguht some getter funciont on the module or somethign
+//the same value trought some getter function on the module.
 Value *getSafePointer(PointerType *O, Module *M){
   Value *V =  new GlobalVariable(*M,O->getPointerElementType(),false,GlobalValue::ExternalLinkage,Constant::getNullValue(O->getPointerElementType()));
   return V;
@@ -165,39 +165,6 @@ void liveInOut(BasicBlock &BB, SetVector<Value*> *LiveIn,
   return;
 }
 
-
-/**
- * This functions recursively computes the delay of the critical path starting
- * from a given root node (Instruction). It traverses the dependence tree and 
- * accumulates the delays inside a given Basic Block.
- *
- * @param *I Root node to analyze critical path from
- * @param *BB Reference Basic Block to compute the critical path in
- * @return critical path delay
- */
-/*
-float dfsCrit(Instruction *I, BasicBlock *BB,map<Instruction*,float> *visited){
-  vector<Instruction*> stackI;
-  vector<float> stackD;
-  float cost = getDelay(I);
-  for(auto *U : I->users()){
-    if(cast<Instruction>(U)->getParent() == BB){
-      float delay = getDelay(cast<Instruction>(U));
-      stackI->push_back(I);
-      stackD->push_back(getDelay(cast<Instruction>(U)));
-
-      I = cast<Instruction>(U);
-    }
-    else{
-      if(!visited->count(I) or visited->count(I) and (*visited)[I] < cost){
-        visited[I] = cost;
-      }
-    }
-  }
-  
-  return cost;
-}*/
-
 float dfsCrit(Instruction *I, BasicBlock *BB,map<Instruction*,float> *visited){
   float cost = 0;
   if ( I->getParent() == BB ){
@@ -257,10 +224,6 @@ pair<float,float> getCriticalPathCost(BasicBlock *BB){
         tsucc = tmp;
     }
   }
-  // For each instruction in the basic block, find it's critical path
-  /*for(auto &I: *BB)
-    I.dump();
-  errs() << "\n";*/
 
   for(auto &I: *BB){
     float tmp = dfsCrit(&I,BB,&visited);
@@ -282,7 +245,6 @@ pair<float,float> getCriticalPathCost(BasicBlock *BB){
  * @param *data Vector to be filled with the statitstics value
  * @param *M LLVM Module
  */
-
 void getMetadataMetrics(BasicBlock *BB, vector<double> *data, Module *M){
   MDNode *N;
 	DataLayout DL  = M->getDataLayout();
@@ -351,9 +313,57 @@ void getMetadataMetrics(BasicBlock *BB, vector<double> *data, Module *M){
   data->push_back(cp/(area*power)/1e9); // Efficiency Gi/smm2W
   float eff_comp = useful/(crit_path.second*area*power)/1e9;
   //data->push_back(eff_comp);
-  // TODO: Search Literature for sound models
-  // Perforamnce and Resource Modeling for FPGAs using High-Level
-  // Synthesis tools: https://core.ac.uk/download/pdf/55728609.pdf
   return;
 }
 
+void getDebugLoc(BasicBlock *BB, stringstream &output){
+  map<string,set<debug_desc> >files;
+  set<string> funcs;
+  output << BB->getName().str() << "[";
+  for(auto &Iorig : *BB){
+        DebugLoc DL = Iorig.getDebugLoc();
+        if(DL){
+          int line = DL.getLine();
+          int col = DL.getCol();
+          string file = cast<DIScope>(DL.getScope())->getFilename().str();
+          string dir = cast<DIScope>(DL.getScope())->getDirectory().str();
+          funcs.insert(Iorig.getParent()->getParent()->getName().str());
+          debug_desc aux = {line,col,false};
+          files[dir+"/"+file].insert(aux);
+        } 
+  }
+  for(auto func : funcs){
+    output << func << ";";
+  }
+  output << "]\n";
+  for(auto file : files){
+    ifstream source;
+    set<int> lines;
+    string sourcecode;
+    source.open(file.first, ifstream::in);
+    output << "\t" << file.first << ":\n\n";
+    for(auto line : file.second){
+      if(!lines.count(line.line)){
+        for(int i=0;i<line.line;++i)
+          getline(source,sourcecode);
+        int stop = sourcecode.find(")",line.col);
+        if(stop == string::npos)
+          stop = sourcecode.find("]",line.col);
+        if(stop == string::npos)
+          stop = sourcecode.find("}",line.col);
+        if(stop == string::npos)
+          stop = sourcecode.length();
+        if(stop != string::npos)
+          sourcecode.insert(stop,RESET);
+        string color = line.merged?GREEN:RED;
+        sourcecode.insert(line.col?line.col-1:line.col,color);
+        sourcecode = to_string(line.line)+sourcecode;
+        output << sourcecode << "\n";
+        source.seekg(0);
+      }
+      lines.insert(line.line);
+    }
+    output << "\n";
+    source.close();
+  }
+}

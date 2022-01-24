@@ -1,6 +1,5 @@
 #include "BBVisualization.hpp"
 
-// https://www.codespeedy.com/convert-rgb-to-hex-color-code-in-cpp/
 string rgb2hex(int r, int g, int b, bool with_head) {
   stringstream ss; 
   if (with_head) 
@@ -8,7 +7,6 @@ string rgb2hex(int r, int g, int b, bool with_head) {
   ss << std::hex << std::setfill('0') << std::setw(6) << (r << 16 | g << 8 | b ); 
   return ss.str();
 }
-
 
 void drawBBGraph(BasicBlock *BB,char *file,string dir){
   struct stat buffer;
@@ -70,7 +68,7 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir){
         ConstantInt *cint = dyn_cast<ConstantInt>(I.getOperand(i));
         ConstantFP *cfp = dyn_cast<ConstantFP>(I.getOperand(i));
         if(cint){
-          m = agnode(G,(char*)to_string(cint->getSExtValue()).c_str(),1);
+          m = agnode(G,(char*)to_string(cint->getLimitedValue()).c_str(),1);
         }
         else if(cfp){
           double valued = cfp->getType()->isDoubleTy()? cfp->getValue().convertToDouble():
@@ -261,7 +259,7 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
         Value *op = dyn_cast<Value>(I.getOperand(i));
         ConstantInt *cint = dyn_cast<ConstantInt>(I.getOperand(i));
         if(cint){
-          m = agnode(G,(char*)to_string(cint->getSExtValue()).c_str(),1);
+          m = agnode(G,(char*)to_string(cint->getLimitedValue()).c_str(),1);
         }
         else{
           if(visited.count(op)){

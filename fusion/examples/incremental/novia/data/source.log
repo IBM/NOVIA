@@ -1,0 +1,142 @@
+Original
+entry8r[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_St20forward_iterator_tag;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.tcc:
+
+211	if (__gnu_cxx::__is_null_pointer([31m__beg[0m) && __beg != __end)
+
+entry3r[_ZN9__gnu_cxx12__to_xstringINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEcEET_PFiPT0_mPKS8_P13__va_list_tagEmSB_z;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/ext/string_conversions.h:
+
+105      _CharT* __s = static_cast<_CharT*>([31m__builtin_alloca(sizeof(_CharT[0m)
+106							  * [31m__n[0m));
+109      [31m__builtin_va_start(__args, __fmt[0m);
+111      const int __len = [31m__convf(__s, __n, __fmt, __args[0m);
+113      [31m__builtin_va_end(__args[0m);
+115      return _String([31m__s, __s + __len[0m);
+
+entry4r[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEC2IPcvEET_S7_RKS3_;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.h:
+
+631	: [31m_M_dataplus(_M_local_data([0m), __a)
+632	{ _M_construct([31m__beg, __end[0m); }
+
+entry10r[_ZSt8distanceIPcENSt15iterator_traitsIT_E15difference_typeES2_S2_;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/stl_iterator_base_funcs.h:
+
+141      return std::__distance([31m__first, __last,[0m
+142			     [31mstd::__iterator_category(__first[0m));
+
+if.endr[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_St20forward_iterator_tag;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.tcc:
+
+215	size_type __dnew = static_cast<size_type>(std::distance([31m__beg, __end[0m));
+217	if ([31m__dnew > size_type(_S_local_capacity[0m))
+
+entry5r[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.h:
+
+270	  _M_construct_aux([31m__beg, __end, _Integral([0m));
+
+try.contr[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_St20forward_iterator_tag;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.tcc:
+
+232	_M_set_length([31m__dnew[0m);
+
+entry2r[_ZNSt7__cxx119to_stringEi;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.h:
+
+6550  { return [31m__gnu_cxx::__to_xstring<string>(&std::vsnprintf, 4 * sizeof(int[0m),
+6551					   "%d", [31m__val[0m); }
+
+entry7r[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE16_M_construct_auxIPcEEvT_S7_St12__false_type;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.h:
+
+251          _M_construct([31m__beg, __end, _Tag([0m));
+
+invoke.cont6r[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_St20forward_iterator_tag;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.tcc:
+
+225	  { this->_S_copy_chars(_M_data(), [31m__beg, __end[0m); }
+
+entry11r[_ZSt10__distanceIPcENSt15iterator_traitsIT_E15difference_typeES2_S2_St26random_access_iterator_tag;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/stl_iterator_base_funcs.h:
+
+104      return [31m__last - __first;[0m
+
+entry9r[_ZN9__gnu_cxx17__is_null_pointerIcEEbPT_;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/ext/type_traits.h:
+
+153    { return [31m__ptr == 0; [0m}
+
+for.body5r[main;]
+	/home/dtrilla/git/novia/fusion/examples/incremental/incremental.cpp:
+
+34    cout << to_string(c[[31mi][0m) << " ";
+
+for.body4r[main;]
+	/home/dtrilla/git/novia/fusion/examples/incremental/incremental.cpp:
+
+32    cout << to_string(a[[31mi][0m) << " ";
+
+entry12r[]
+Splits
+for.body4rfor.body5rspl1[main;]
+	/home/dtrilla/git/novia/fusion/examples/incremental/incremental.cpp:
+
+32    cout << to_string([32ma[i][0m) << " ";
+34    cout << to_string([32mc[i][0m) << " ";
+
+for.body4rfor.body5rspl2[main;]
+	/home/dtrilla/git/novia/fusion/examples/incremental/incremental.cpp:
+
+32    cout << to_string([32ma[i][0m) << " ";
+34    cout << to_string([32mc[i][0m) << " ";
+
+entry7rentry5rentry8rentry10rentry9rtry.contrspl0[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE16_M_construct_auxIPcEEvT_S7_St12__false_type;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.h:
+
+251          _M_construct(__beg, __end, [31m_Tag([0m));
+
+entry7rentry5rentry8rentry10rentry9rtry.contrspl1[_ZN9__gnu_cxx17__is_null_pointerIcEEbPT_;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/ext/type_traits.h:
+
+153    { return __ptr [31m== 0; [0m}
+
+entry3rspl0[_ZN9__gnu_cxx12__to_xstringINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEcEET_PFiPT0_mPKS8_P13__va_list_tagEmSB_z;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/ext/string_conversions.h:
+
+109      [31m__builtin_va_start(__args, __fmt[0m);
+111      const int __len = __convf(__s, __n, __fmt, [31m__args[0m);
+113      [31m__builtin_va_end(__args[0m);
+
+entry3rspl1[_ZN9__gnu_cxx12__to_xstringINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEcEET_PFiPT0_mPKS8_P13__va_list_tagEmSB_z;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/ext/string_conversions.h:
+
+105      _CharT* __s = static_cast<_CharT*>([31m__builtin_alloca(sizeof(_CharT[0m)
+106							  [31m* __n[0m));
+
+entry3rspl2[_ZN9__gnu_cxx12__to_xstringINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEcEET_PFiPT0_mPKS8_P13__va_list_tagEmSB_z;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/ext/string_conversions.h:
+
+115      return _String(__s, __s [31m+ __len[0m);
+
+entry4rspl0[]
+entry4rspl1[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEC2IPcvEET_S7_RKS3_;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.h:
+
+631	: [31m_M_dataplus(_M_local_data([0m), __a)
+
+entry11rspl0[]
+entry11rspl1[_ZSt10__distanceIPcENSt15iterator_traitsIT_E15difference_typeES2_S2_St26random_access_iterator_tag;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/stl_iterator_base_funcs.h:
+
+104      return __last [31m- __first;[0m
+
+entry2rspl0[]
+if.endrspl1[_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_M_constructIPcEEvT_S7_St20forward_iterator_tag;]
+	//usr/lib/gcc/x86_64-linux-gnu/9/../../../../include/c++/9/bits/basic_string.tcc:
+
+217	if (__dnew [31m> size_type(_S_local_capacity[0m))
+
+entry12rspl0[]
+

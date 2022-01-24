@@ -28,7 +28,8 @@ static cl::opt<string> excludeList("excl",
 namespace {
 	struct instrumentBBs : public ModulePass {
 		static char ID;
-    map<BasicBlock*,GlobalVariable*> tableGV; // Globals for cycle count
+    // Globals for BB cycle count (first - without external calls, second - with external calls)
+    map<BasicBlock*,pair<GlobalVariable*,GlobalVariable*> > tableGV; // Globals for cycle count
     map<BasicBlock*,GlobalVariable*> countGV; // Globals for iteration count
 
 		instrumentBBs() : ModulePass(ID) {}
@@ -37,7 +38,7 @@ namespace {
       IRBuilder<> Builder(M.getContext());
       FunctionType *rdtscTy = FunctionType::get(Builder.getInt64Ty(),false);
       Function *rdtsc = Function::Create(rdtscTy,Function::ExternalLinkage,
-          "rdtsc",&M);
+          "novia_time",&M);
 
       // Get the exclusion list, those functions won't be instrumented
       set<string> exclude;
@@ -59,7 +60,11 @@ namespace {
               num_phis++;
             if( BB.size()-num_phis > 2 and !BB.isLandingPad()){
               vector<Value*> CallVals;
-              tableGV[&BB] = new GlobalVariable(M,Builder.getInt64Ty(),false,
+              vector<Value*> CallValsNoBody;
+              tableGV[&BB].first = new GlobalVariable(M,Builder.getInt64Ty(),false,
+                  GlobalValue::ExternalLinkage,
+                  Constant::getNullValue(Builder.getInt64Ty()));
+              tableGV[&BB].second = new GlobalVariable(M,Builder.getInt64Ty(),false,
                   GlobalValue::ExternalLinkage,
                   Constant::getNullValue(Builder.getInt64Ty()));
               countGV[&BB] = new GlobalVariable(M,Builder.getInt64Ty(),false,
@@ -70,7 +75,7 @@ namespace {
               cast<Instruction>(start)->moveBefore(BB.getFirstNonPHI());
               Value *end = Builder.CreateCall(rdtsc);
               for(auto &I : BB){
-                if(isa<CallInst>(&I) and cast<CallInst>(&I)
+                if(isa<CallInst>(&I) and !isa<IntrinsicInst>(&I) and cast<CallInst>(&I)
                     ->getCalledFunction() != rdtsc){
                   Value *scall = Builder.CreateCall(rdtsc);
                   cast<Instruction>(scall)->moveBefore(&I);
@@ -78,17 +83,35 @@ namespace {
                   cast<Instruction>(ecall)->moveAfter(&I);
                   Value *elapsed = Builder.CreateSub(ecall,scall);
                   CallVals.push_back(elapsed);
+
+                  // Only Calls that are not in bitcode
+                  if(cast<CallInst>(&I)->isTailCall() or 
+                      cast<CallInst>(&I)->getCalledFunction() and 
+                      !cast<CallInst>(&I)->getCalledFunction()->empty()){
+                    CallValsNoBody.push_back(elapsed);
+                  }
                 }
               }
               Value *cycles = Builder.CreateSub(end,start);
+              Value *BBCycles = cycles;
               for(auto V : CallVals){
                 cycles = Builder.CreateSub(cycles,V);
               }
-              // Cycle counts
+              for(auto V : CallValsNoBody){
+                BBCycles = Builder.CreateSub(BBCycles,V);
+              }
+              // Cycle counts - without external cal  ls
               Value *accum = Builder.CreateLoad(Builder.getInt64Ty(),
-                  tableGV[&BB]);
+                  tableGV[&BB].first);
               Value *newaccum = Builder.CreateAdd(cycles,accum);
-              Builder.CreateStore(newaccum,tableGV[&BB]);
+              Builder.CreateStore(newaccum,tableGV[&BB].first);
+              
+              // Cycle counts - with only external calls
+              accum = Builder.CreateLoad(Builder.getInt64Ty(),
+                  tableGV[&BB].second);
+              newaccum = Builder.CreateAdd(BBCycles,accum);
+              Builder.CreateStore(newaccum,tableGV[&BB].second);
+
 
               // Iteration counts
               Value *countAccum = Builder.CreateLoad(Builder.getInt64Ty(),
@@ -102,12 +125,33 @@ namespace {
 
       // Open file and get FileDescriptor
       FunctionType *collectTy = FunctionType::get(Builder.getVoidTy(),false);
+      Function *startRD = Function::Create(collectTy,Function::ExternalLinkage,
+          "startRd",&M);
       Function *collect = Function::Create(collectTy,Function::ExternalLinkage,
           "profiler_collector",&M);
-      appendToGlobalDtors(M,collect,0);
+      appendToGlobalCtors(M,startRD,0);
+      BasicBlock *startRDBB = BasicBlock::Create(M.getContext(),"startRDBB",
+          startRD);
+      Builder.SetInsertPoint(startRDBB);
+      Value *starttmp = Builder.CreateCall(rdtsc);
+      Value *GBStart = new GlobalVariable(M,Builder.getInt64Ty(),false,
+                  GlobalValue::ExternalLinkage,
+                  Constant::getNullValue(Builder.getInt64Ty()));
+      Builder.CreateStore(starttmp,GBStart);
+      Builder.CreateRetVoid();
+
+
+
       BasicBlock *collectBB = BasicBlock::Create(M.getContext(),"collectBB",
           collect);
       Builder.SetInsertPoint(collectBB);
+
+      appendToGlobalDtors(M,collect,0);
+      Value *globalEnd = Builder.CreateCall(rdtsc);
+      Value *globalStart = Builder.CreateLoad(Builder.getInt64Ty(), GBStart);
+      Value *TotalElapsed =  Builder.CreateSub(globalEnd,globalStart);
+
+
       // Function Prototypes
       vector<Type*> openArgsTypes({Builder.getInt8PtrTy(),
           Builder.getInt32Ty()});
@@ -141,16 +185,17 @@ namespace {
       Value *bufferPtr = Builder.CreateBitCast(buffer,Builder.getInt8PtrTy());
 
       // Collect function to gather stats
-      Value *sprintfString = Builder.CreateGlobalStringPtr("%s %zd %zd\n");
+      Value *sprintfString = Builder.CreateGlobalStringPtr("%s %zd %zd %zd\n");
       for(auto GV : tableGV){
 
         GlobalVariable *bbName = Builder.CreateGlobalString(GV.
             first->getName());
-        Value *counter = Builder.CreateLoad(Builder.getInt64Ty(),GV.second);
+        Value *partialCounter = Builder.CreateLoad(Builder.getInt64Ty(),GV.second.first);
+        Value *totalCounter = Builder.CreateLoad(Builder.getInt64Ty(),GV.second.second);
         Value *iterCounter = Builder.CreateLoad(Builder.getInt64Ty(),
             countGV[GV.first]);
-        vector<Value*> sprintfArgs({bufferPtr,sprintfString,bbName,counter,
-            iterCounter});
+        vector<Value*> sprintfArgs({bufferPtr,sprintfString,bbName,partialCounter,
+            TotalElapsed,iterCounter});
         Value *size = Builder.CreateCall(sprintf,sprintfArgs);
         Value *size64 = Builder.CreateZExtOrBitCast(size,Builder.getInt64Ty());
         vector<Value*> writeArgs({fd,bufferPtr,size64});

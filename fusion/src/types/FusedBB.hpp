@@ -8,6 +8,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 
 #include "../BBAnalysis.hpp"
@@ -45,13 +46,16 @@
 #define BOLDCYAN    "\033[1m\033[36m"      /* Bold Cyan */
 #define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
 
-typedef struct {
+#define MAX_CONF 64
+#define MAX_SELECTS 64
+
+/*typedef struct {
   int line;
   int col;
   bool merged;
 } debug_desc;
   
-static bool operator< (const debug_desc &a, const debug_desc &b){ return a.line < b.line; }
+static bool operator< (const debug_desc &a, const debug_desc &b){ return a.line < b.line; }*/
 
 using namespace llvm;
 using namespace std;
@@ -77,6 +81,8 @@ class FusedBB{
     // Positions
     vector<map<BasicBlock*,Value*>* > *liveInPos;
     vector<map<BasicBlock*,set<Value*>*> * > *liveOutPos;
+    stringstream BBConfigs;
+    map<BasicBlock*, int> *ConfigMap;
     
     // Live Values
     map<Value*,set<pair<Value*,BasicBlock*> >* > *linkOps;
@@ -113,7 +119,8 @@ class FusedBB{
     void inlineOutputSelects(SelectInst *,int);
     void inlineInputSelects(SelectInst *,int);
     bool insertOffloadCall(Function *);
-    bool insertInlineCall(Function *, map<Value*,Value*> *);
+    bool insertSoftwareCall(Function *);
+    bool insertInlineCall(Function *, map<Value*,Value*> *,int);
     void removeOrigInst();
 
     // helpers
@@ -164,6 +171,7 @@ class FusedBB{
     float getTseqSubgraph(list<Instruction*> *, map<string,long> *, 
         map<BasicBlock*,float> *);
     float getTseq();
+    void getConfigString(stringstream&);
     //Stats
     pair<float,pair<float,float> > overheadCosts(map<string,long> *);
     // Hardware

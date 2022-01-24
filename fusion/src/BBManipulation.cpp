@@ -36,11 +36,17 @@ void separateBr(BasicBlock *BB){
             if(termi->getSuccessor(i) == BB)
               termi->setSuccessor(i,newBB);
         }
-        else{
+        else if(isa<SwitchInst>(term)){
           SwitchInst *terms = cast<SwitchInst>(term);
           for(int i = 0; i < terms->getNumSuccessors(); ++i)
             if(terms->getSuccessor(i) == BB)
               terms->setSuccessor(i,newBB);
+        }
+        else if(isa<IndirectBrInst>(term)){
+          IndirectBrInst *termbr = cast<IndirectBrInst>(term);
+          for(int i = 0; i < termbr->getNumSuccessors(); ++i)
+            if(termbr->getSuccessor(i) == BB)
+              termbr->setSuccessor(i,newBB);
         }
       }
     while(isa<PHINode>(BB->begin()))

@@ -1,4 +1,0 @@
-for.bodyr 0.50 100
-for.body3r 0.25 64
-for.body6r 0.24 64
-for.body9r 0.01 1

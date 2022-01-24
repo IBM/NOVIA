@@ -964,14 +964,15 @@ void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* 
   return;
 }
 
-bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap){
+/*bool FusedBB::insertSoftwareCall(Function *F){
   static IRBuilder<> Builder(*Context);
   vector<Type*> inputTypes;
   vector<Instruction*> removeInst;
+  
+  Type *inputType = ((PointerType*)F->getArg(0)->getType())->getElementType();
+  Type *outputType = ((PointerType*)F->getReturnType())->getElementType();
 
-  //Type *inputType = ((PointerType*)F->getArg(0)->getType())->getElementType();
-  //Type *outputType = ((PointerType*)F->getReturnType())->getElementType();
-
+  int config = 0;
   for(auto BB : *mergedBBs){
 
       // Function Arguments
@@ -984,10 +985,12 @@ bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap){
           Value *inV = VMap->count((*E)[BB])? (*VMap)[(*E)[BB]]:(*E)[BB];
           Args[pos] = inV;
         }
-        else
+        else{
           Args[pos] = Constant::getNullValue(F->getArg(pos)->getType());
+        }
         pos++;
       }
+      ArrayRef<Type*> IntrinsicArgTy;
 			
       
       // Removing inlined instructions
@@ -1014,9 +1017,75 @@ bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap){
         }
         pos++;
       }
-
+    config++;
 	}
   //verifyModule(*F->getParent());
+}*/
+
+bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu){
+  static IRBuilder<> Builder(*Context);
+  vector<Type*> inputTypes;
+  vector<Instruction*> removeInst;
+
+  //Type *inputType = ((PointerType*)F->getArg(0)->getType())->getElementType();
+  //Type *outputType = ((PointerType*)F->getReturnType())->getElementType();
+  int config = 0;
+  for(auto BB : *mergedBBs){
+
+      // Function Arguments
+      SmallVector<Value*,20> Args(this->liveInPos->size(),NULL);
+      SmallVector<Metadata*,20> IntrinsicArgs(this->liveInPos->size(),NULL);
+
+      // LiveIn Values
+      int pos = 0;
+      for(auto E : *this->liveInPos){
+        if(E->count(BB)){
+          Value *inV = VMap->count((*E)[BB])? (*VMap)[(*E)[BB]]:(*E)[BB];
+          Args[pos] = inV;
+          //IntrinsicArgs[pos] = ValueAsMetadata::get(Args[pos]);
+          IntrinsicArgs[pos] = MDString::get(*Context,Args[pos]->getName());
+          //IntrinsicArgs[pos] = Args[pos]->getType();
+        }
+        else{
+          Args[pos] = Constant::getNullValue(F->getArg(pos)->getType());
+          IntrinsicArgs[pos] = ValueAsMetadata::get(Args[pos]);
+        }
+          //IntrinsicArgs[pos] = Args[pos]->getType();
+        pos++;
+      }
+      ArrayRef<Type*> IntrinsicArgTy;
+			
+      
+      // Removing inlined instructions
+      auto rI = BB->rbegin();
+      for(; rI != BB->rend(); rI++ ){
+        if(find(Args.begin(),Args.end(),(Value*)&(*rI)) != Args.end())
+          break;
+      }
+      Builder.SetInsertPoint(&(*--rI));
+      Value *outStruct = Builder.CreateCall(F,Args);
+      Value *intStruct = Builder.CreateIntrinsic(Intrinsic::exec_nfu, IntrinsicArgTy,
+          {Builder.getInt8(nfu), Builder.getInt8((*ConfigMap)[BB])});
+
+      //LiveOuts
+      pos = 0;
+      for(auto E : *this->liveOutPos){
+        if(E->count(BB)){
+          Value *outGEPData = Builder.CreateStructGEP(outStruct,pos);
+          Value *out = Builder.CreateLoad((*(*E)[BB]->begin())->getType(),outGEPData);
+          for(auto outV : *(*E)[BB]){
+            outV->replaceAllUsesWith(out);
+            // If the out value is the new livein of a merged bb we copy it's pos
+            (*VMap)[outV] = out;  
+            // Sort Users
+          }
+        }
+        pos++;
+      }
+    config++;
+	}
+  this->removeOrigInst();
+  verifyModule(*F->getParent());
 
 }
 
@@ -1361,6 +1430,14 @@ Function* FusedBB::createInline(Module *Mod){
   SetVector<Value*> LiveIn, LiveOut;
   liveInOut(*BB, &LiveIn, &LiveOut);
   
+  map<Instruction*,int > tmp_sel_idx;
+  map<BasicBlock*,int> tmp_bb_idx;
+  for(auto BB : *mergedBBs){
+    tmp_bb_idx[BB] = tmp_bb_idx.size();
+  }
+  vector<vector<int> > tmp_configs(mergedBBs->size(), vector<int>(64));
+  map<string,BasicBlock*> tmp_bb_config_map;
+  
   int pos = 0;
   for(auto Vin: LiveIn){
     this->liveInPos->push_back(new map<BasicBlock*,Value*>);
@@ -1378,10 +1455,22 @@ Function* FusedBB::createInline(Module *Mod){
     else if (isa<Argument>(Vin)){
       if(Vin->getName() == "fuse.sel.arg"){
         Instruction *SelI = cast<Instruction>(*Vin->user_begin());
-        for(auto E : *(*this->selMap)[SelI].first)
+        // Configuration file generation
+        int sel_idx;
+        if(tmp_sel_idx.count(SelI))
+          sel_idx = tmp_sel_idx[SelI];
+        else{
+          sel_idx = tmp_sel_idx.size(); 
+          tmp_sel_idx[SelI] = tmp_sel_idx.size();
+        }
+      
+        for(auto E : *(*this->selMap)[SelI].first){
           (*(*this->liveInPos)[pos])[E] = Builder.getInt1(true);
-        for(auto E : *(*this->selMap)[SelI].second)
+          tmp_configs[tmp_bb_idx[E]][sel_idx] = 1;
+        }
+        for(auto E : *(*this->selMap)[SelI].second){
           (*(*this->liveInPos)[pos])[E] = Builder.getInt1(false);
+        }
       }
       else if(this->linkOps->count(Vin)){
         for(auto linkV : *(*this->linkOps)[Vin])
@@ -1412,6 +1501,45 @@ Function* FusedBB::createInline(Module *Mod){
     }
     pos++;
   }
+
+
+
+  map<int,int> config_map;
+  map<string,int> string_configs;
+  for(int i = 0; i < tmp_configs.size(); ++i){
+    long a = 0;
+    stringstream Configs;
+    for(int j = 0; j < tmp_configs[i].size(); ++j){
+      a <<= 1;
+      a |= 0x1&tmp_configs[i][j];
+    }
+    Configs << std::setw(16) << std::setfill('0') << std::hex << a << '\n';
+
+    if(!string_configs.count(Configs.str())){
+      config_map[i] = string_configs.size();
+      string_configs[Configs.str()] = string_configs.size();
+    }
+    else{
+      config_map[i] = string_configs[Configs.str()];
+    }
+  }
+
+  ConfigMap = new map<BasicBlock*,int>;
+  for(auto E : tmp_bb_idx)
+    (*ConfigMap)[E.first] = config_map[E.second];
+
+  assert(string_configs.size() <= MAX_CONF && "The number of configurations exceeds the "
+      "hardware limitations (check MAX_CONF)");
+  for(int i = 0; i < string_configs.size(); ++i)
+    for(auto E : string_configs)
+      if(E.second == i)
+        BBConfigs << E.first;
+  for(int i = string_configs.size() ; i < MAX_CONF ; ++i)
+    BBConfigs << std::setw(16) << std::setfill('0') << std::hex << 0 << '\n';
+
+  //BBConfigs << Configs.str();
+  //errs() << BBConfigs.str();
+
 
   pos = 0;
   for(auto outV : *this->LiveOut){
@@ -1448,6 +1576,7 @@ Function* FusedBB::createInline(Module *Mod){
       ArrayRef<Type*>(inputTypes),false);
   Function *f = Function::Create(funcType,
       Function::ExternalLinkage,"inline_func",Mod);
+  f->addFnAttr("novia_acc");
 
   // Insert Fused Basic Block
   BB->insertInto(f);
@@ -1881,19 +2010,22 @@ float FusedBB::getTseqSubgraph(list<Instruction*> *subgraph, map<string,long> *i
     if((*I)->getName().str().find("fuse.sel") == string::npos)
       for(auto Iorig : *(*fuseMap)[*I]){
         tseq += getSwDelay(*I)*((*iterMap)[Iorig->getParent()->getName().str()]);
-      if(!tseq_block->count(Iorig->getParent()))
-        (*tseq_block)[Iorig->getParent()] = 0;
-      (*tseq_block)[Iorig->getParent()] += getSwDelay(*I);
-        
-    }
+        if(!tseq_block->count(Iorig->getParent()))
+          (*tseq_block)[Iorig->getParent()] = 0;
+        (*tseq_block)[Iorig->getParent()] += getSwDelay(*I);
+      }
   }
   return tseq;
 }
 
+void FusedBB::getConfigString(stringstream &configs){
+  configs << BBConfigs.str();
+}
 
 void FusedBB::getDebugLoc(stringstream &output){
   map<string,set<debug_desc> >files;
-  output << BB->getName().str() << ":\n";
+  set<string> funcs;
+  output << BB->getName().str() << "[";
   for(auto &I : *this->BB){
     if(this->fuseMap->count(&I)){
       for(auto Iorig : *(*this->fuseMap)[&I]){
@@ -1903,12 +2035,17 @@ void FusedBB::getDebugLoc(stringstream &output){
           int col = DL.getCol();
           string file = cast<DIScope>(DL.getScope())->getFilename().str();
           string dir = cast<DIScope>(DL.getScope())->getDirectory().str();
+          funcs.insert(Iorig->getParent()->getParent()->getName().str());
           debug_desc aux = {line,col,this->isMergedI(&I)};
           files[dir+"/"+file].insert(aux);
         } 
       }
     }
   }
+  for(auto func : funcs){
+    output << func << ";";
+  }
+  output << "]\n";
   for(auto file : files){
     ifstream source;
     set<int> lines;

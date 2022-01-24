@@ -40,7 +40,7 @@ static cl::opt<int> visLev("visualLevel",
       "6: Merged and Split BB DFGs\n"
       "7: All BB DFGs"),cl::Optional);
 static cl::opt<bool> debug("dbg",
-    cl::desc("Create bitcode with redundant original BBs to detect errors in"
+    cl::desc("Generate bitcode with redundant original BBs to detect errors in"
       " the inline/offload process"), cl::Optional);
 static cl::opt<string> dynamicInfoFile("dynInf",
     cl::desc("File with profiling information per BB"),cl::Optional);
@@ -48,6 +48,10 @@ static cl::opt<string> excludeList("excl",
     cl::desc("File with the exclusion list for functions"),cl::Optional);
 static cl::opt<string> suffix("suffix",
     cl::desc("Suffix to be appended to all Fs and BBs"),cl::Optional);
+static cl::opt<string> nfuFilename("nfus",
+    cl::desc("Filename containing the NFUs to implement"),cl::Optional);
+
+#define MAX_ACC 4
 
 
 namespace {
@@ -79,23 +83,27 @@ namespace {
       // Mapping of BBs to relative weight in application (profileMap)
       // and number of times exectued (iterMap)
       map<string,double> profileMap;
+      map<string,double> totalCycleMap;
       map<string,long> iterMap;
 			BasicBlock *auxBBptr = NULL;
 			FusedBB *C, *auxC;
       error_code EC;
-      raw_fd_ostream stats("stats.csv",EC);
+      raw_fd_ostream stats("data/stats.csv",EC);
+      raw_fd_ostream orig("data/orig.csv",EC);
+      raw_fd_ostream merge("data/merge.csv",EC);
+      raw_fd_ostream split("data/split.csv",EC);
+      raw_fd_ostream overhead("data/io_overhead.csv",EC);
       // TODO: Unless specific changes in the implementation are made:
       // Do not alter anything before Efficiency
       // Merit must be last always
-      stats << "Orig\n";
-      stats << "BB,Original Inst,Maximum Merges,Number" 
+      orig << "BB,Original Inst,Maximum Merges,Number" 
         " of Merges,Size,Num Loads,Num Stores,Num Muxs"
         ",Other Instructions,Tseq,Memory Footprint (bits)"
         ",Critical Path Communication,CritPath,Area,"
-        "Static Power,Dynamic Power,Efficiency,Weight\n";
+        "Static Power,Dynamic Power,Efficiency,Weight,Weight with external Calls\n";
 
       // Read the dynamic info file
-      readDynInfo(dynamicInfoFile,&profileMap, &iterMap);
+      readDynInfo(dynamicInfoFile,&profileMap, &totalCycleMap, &iterMap);
       double total_percent = 0; 
 
 			// Read the list of BBs to merge
@@ -107,7 +115,19 @@ namespace {
         if(profileMap.count(bb_name))
           total_percent += profileMap[bb_name];
       }
-      
+      // Read the NFUs to Implement;
+      set<int> nfus;
+      fstream nfufile;
+      string nfu_n;
+      nfufile.open(nfuFilename);
+      if(!nfuFilename.empty() and nfufile)
+        while(nfufile >> nfu_n)
+          nfus.insert(stoi(nfu_n));
+      else{
+        errs() << "NFU Implementation File missing or not specified"
+                 "; No NFU will be implemented. Continuing.\n";
+      }
+            
       // If no weights are defined, use equal weights for everybody
       if(profileMap.empty()){
         float size = bbs.size();
@@ -144,21 +164,22 @@ namespace {
         separateBr(bbs[i].second);
         getMetadataMetrics(bbs[i].second,prebb[prebb.size()-1],&M);
         prebb[prebb.size()-1]->push_back(profileMap[bbs[i].second->getName().str()]);
+        prebb[prebb.size()-1]->push_back(totalCycleMap[bbs[i].second->getName().str()]);
 		  	bbList.push_back(bbs[i].second);
       }
       
       //STATS
       for(int i= 0; i < prebb.size(); ++i){
-        stats << bbList[i]->getName();
+        orig << bbList[i]->getName();
         for(int j = 0; j < prebb[i]->size(); ++j){
-          stats << ',' << format("%.5e",(*prebb[i])[j]);
+          orig << ',' << format("%.5e",(*prebb[i])[j]);
         }
-        stats << "\n";
+        orig << "\n";
       }
-      stats << "\n";
+      orig << "\n";
+      orig.close();
           
-      stats << "Merged\n";
-      stats << "BB,Original Inst,Maximum Merges,Number" 
+      merge << "BB,Original Inst,Maximum Merges,Number"
         " of Merges,Size,Num Loads,Num Stores,Num Muxs"
         ",Other Instructions,Tseq,Memory Footprint (bits)"
         ",Critical Path Communication,CritPath,Area,"
@@ -277,11 +298,11 @@ namespace {
             count_fused += e ? 1 : 0;
   
           if(max_index >= 0 and deleted != count_fused){
-            stats << FusedBBs[max_index]->getName();
+            merge << FusedBBs[max_index]->getName();
             for(int j = 0; j < fused[max_index]->size(); ++j){
-              stats << "," << format("%.5e",(*fused[max_index])[j]);
+              merge << "," << format("%.5e",(*fused[max_index])[j]);
             }
-            stats<<"\n";
+            merge <<"\n";
 
             candidate = FusedBBs[max_index];
             last_merit = (*fused[max_index])[fused[max_index]->size()-1];
@@ -335,7 +356,7 @@ namespace {
             max = vCandidates[i].first >= max? vCandidates[i].first : max;
           }
         }
-        stats.flush(); // Flush buffer before dangerous operations
+        merge.flush(); // Flush buffer before dangerous operations
 				//Foff = vCandidates[max_sel].second->createOffload(&M);
         
         // Split experimentation
@@ -368,12 +389,13 @@ namespace {
 
 
         std::sort(vCandidates.begin(),vCandidates.end(),compareFused);
-        stats << "\nSplits\n";
-        stats << "BB,Relative Saved Area,Area,SpeedUp,MergedBBs,Size,Tseq,CritPath,Weight,Area Efficiency,Relative SpeedUp,OrigWeight,MergeNum\n";
+        merge.close();
+        split << "BB,Relative Saved Area,Area,SpeedUp,MergedBBs,Size,Tseq,CritPath,Weight,Area Efficiency,Relative SpeedUp,OrigWeight,MergeNum\n";
         vector<vector<string> > list_bbs;
         stringstream tseq_block;
         stringstream debug_log;
         stringstream overhead_log;
+        stringstream config_log;
         overhead_log << "BB,AvgIns,AvgOuts\n";
         float total_invokes = 0;
         float total_ins = 0;
@@ -385,7 +407,14 @@ namespace {
         float acum_sub_time = 0; 
         float total_time = 1;
         int total_subgraphs = 0;
-        stats.flush(); // Flush buffer before dangerous operations
+        int nfu = 0;
+        debug_log << "Original" << endl;
+        for(auto bb : bbs)
+          getDebugLoc(bb.second,debug_log);
+        debug_log << "Splits" << endl;
+
+
+        split.flush(); // Flush buffer before dangerous operations
         vector<pair<FusedBB*,pair<float,float> > > FusedResults;
         for(int spl=0;spl<vCandidates.size();++spl){
           vector<list<Instruction*>*> subgraphs;
@@ -432,7 +461,7 @@ namespace {
               orig_weight = vCandidates[spl].second->getOrigWeight();
               float red_tseq = orig_tseq/tseq_sub[i];
               float new_weight = orig_weight/red_tseq;
-              float iterations = 0;
+              long iterations = 0;
               for(auto name: subset){
                 iterations += iterMap[name];
               }
@@ -443,12 +472,15 @@ namespace {
                 //exit(1);
               }
 
-              if(((*data[i])[0] < 1 and sub_speed > 1) or force){
+              if(((*data[i])[0] <= 1 and sub_speed > 1) or force){
                 
                 Function *fSpl;
                 fSpl = splitBB->createInline(&M);
-                //splitBB->insertInlineCall(fSpl,&VMap);
                 splitBB->getDebugLoc(debug_log);
+                if(nfus.count(spl*100+i)){
+                  splitBB->insertInlineCall(fSpl,&VMap,nfu++);
+                  splitBB->getConfigString(config_log);
+                }
                 acum_sub_area += tmp_areas[i].first;
                 acum_orig_area += tmp_areas[i].second;
                 acum_sub_time += 1-1/sub_speed;
@@ -505,14 +537,14 @@ namespace {
 
             int x = 0;
             for(auto elem : data){
-              if((*elem)[0] < 1 and (*elem)[2] > 1){
-                stats << list_bbs[num_candidates+x][0];
+              if((*elem)[0] <= 1 and (*elem)[2] > 1){
+                split << list_bbs[num_candidates+x][0];
                 /*for(int l = 1; l < list_bbs[num_candidates+x].size(); ++l)
                   stats << list_bbs[num_candidates+x][l];
                 stats << ',';*/
                 for(auto datum : *elem)
-                  stats << "," << datum;
-                stats << "\n";
+                  split << "," << datum;
+                split << "\n";
                 ++x;
               }
             }
@@ -521,6 +553,7 @@ namespace {
             for(auto datum: data)
               delete datum;
           }
+        split.close();
 
         int count = 0;
         stats << "\nListings\n";
@@ -538,20 +571,19 @@ namespace {
           stats << "\n";
           count++;
         }
-        for(auto E : FusedResults)
-          E.first->removeOrigInst();
+        //for(auto E : FusedResults)
+        //  E.first->removeOrigInst();
 
         stats << "\n";
         stats << "TseqBlocks\n";
         stats << tseq_block.str() << "\n";
 
         stats << "\n";
-        stats <<"Software Overhead\n";
-        stats << overhead_log.str();
-        stats << "AvgTotal," << total_ins/total_invokes << "," << 
+        overhead << overhead_log.str();
+        overhead << "AvgTotal," << total_ins/total_invokes << "," << 
           total_outs/total_invokes << "\n";
+        overhead.close();
 
-        stats << "\n";
         stats << "TotalAreaSavings,";
         stats << acum_sub_area/acum_orig_area << "\n";
         stats << "TotalSpeedUp,";
@@ -631,8 +663,19 @@ namespace {
         */
 
         
-        raw_fd_ostream debuglog("source.log",EC);
+        raw_fd_ostream debuglog("data/source.log",EC);
         debuglog << debug_log.str() << "\n";
+        debuglog.close();
+        
+        raw_fd_ostream configlog("output/nfu.select.data",EC);
+        configlog << config_log.str();
+        stringstream fillstring;
+        for(int i = nfus.size() ; i < MAX_ACC; ++i )
+          for(int j = 0; j < MAX_CONF; j++)
+            fillstring << std::setw(16) << std::setfill('0') << std::hex << 0 << '\n';
+        configlog << fillstring.str();
+
+        configlog.close();
         
 
         ////////////////////////

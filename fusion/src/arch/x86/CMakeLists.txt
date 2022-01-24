@@ -1,2 +1,1 @@
-add_library(timer OBJECT timer.cpp)
-
+add_library(timer_x86 STATIC timer.cpp)
