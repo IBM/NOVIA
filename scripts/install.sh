@@ -1,8 +1,5 @@
 #!/bin/bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-echo $DIR
-exit
-
 source $DIR/../env.sh
 
 git clone -b llvmorg-13.0.0 https://github.com/llvm/llvm-project $LLVM_TOP 
