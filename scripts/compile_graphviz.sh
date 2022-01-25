@@ -3,6 +3,7 @@ source env.sh
 
 echo $GRAPHVIZ_TOP
 cd $GRAPHVIZ_TOP
+ls
 mkdir -p build
 ./autogen.sh
 ./configure --prefix=$GRAPHVIZ_TOP/build/
