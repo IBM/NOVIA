@@ -11,7 +11,7 @@ cd ../
 $DIR/scripts/compile_graphviz.sh
 $DIR/scripts/compile_llvm_minimal.sh
 
-cd $DIR/../fusion
+cd $DIR/fusion
 mkdir -p build
 cd build
 cmake ../
