@@ -48,6 +48,7 @@ def main(argv):
         else:
             print(colored("Inline accelerators with NO merges","red"))
         print("Exec Time: {0:.2f}%".format(split_fstats['Weight'][i]*100))
+        print("Speedup: {0:.2f}x".format(split_fstats['SpeedUp'][i]))
         print("Number of Instructions: {0:.0f} - of which Selects: TBD - TBD % Useful Instr"
               .format(split_fstats['Size'][i]))
         print("Source Code (green = merged instructions, red = unmerged):")
