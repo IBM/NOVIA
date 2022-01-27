@@ -97,7 +97,7 @@ else
 fi
 
 echo "Processing Histogram"
-python $scriptDir/normalize.py data/histogram.txt data/weights.txt data/bblist.txt $4
+python3 $scriptDir/normalize.py data/histogram.txt data/weights.txt data/bblist.txt $4
 if [ $? -ne 0 ]; then
   exit 1
 fi
