@@ -67,6 +67,7 @@ namespace {
 		bool runOnFunction(Function &F) override {
 			for(BasicBlock &BB: F)
 				errs() << BB.getName() << '\n';
+      return false;
 		}
 	};
 

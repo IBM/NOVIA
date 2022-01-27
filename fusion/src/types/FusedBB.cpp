@@ -1064,8 +1064,8 @@ bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu){
       }
       Builder.SetInsertPoint(&(*--rI));
       Value *outStruct = Builder.CreateCall(F,Args);
-      Value *intStruct = Builder.CreateIntrinsic(Intrinsic::exec_nfu, IntrinsicArgTy,
-          {Builder.getInt8(nfu), Builder.getInt8((*ConfigMap)[BB])});
+      /*Value *intStruct = Builder.CreateIntrinsic(Intrinsic::exec_nfu, IntrinsicArgTy,
+          {Builder.getInt8(nfu), Builder.getInt8((*ConfigMap)[BB])});*/
 
       //LiveOuts
       pos = 0;
@@ -1086,7 +1086,7 @@ bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu){
 	}
   this->removeOrigInst();
   verifyModule(*F->getParent());
-
+  return false;
 }
 
 // Remove Inlined Instructions
@@ -1222,6 +1222,7 @@ void FusedBB::removeOrigInst(){
   for(auto I : removeInst)
     I->eraseFromParent();
 */
+  return false;
 }
 
 /**
