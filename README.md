@@ -9,7 +9,7 @@ https://dl.acm.org/doi/abs/10.1145/3466752.3480094
 # Dependencies
 * cmake ninja-build gcc g++ (for build)
 * libgd-dev qt4-qmake libqt4-dev autoconf automake libtool bison flex (for Graphviz)
-* python3 (for automated scripts)
+* python3 python3-pandas python3-termcolor (for automated scripts)
 
 # Install
 * ./scripts/install.sh 

@@ -19,7 +19,9 @@ RUN apt-get install -y cmake \
                     automake \
                     libtool \
                     bison \
-                    flex 
+                    flex \
+                    python3-pandas \
+                    python3-termcolor 
 
 
   
