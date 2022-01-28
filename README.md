@@ -12,9 +12,12 @@ https://dl.acm.org/doi/abs/10.1145/3466752.3480094
 * python3 python3-pandas python3-termcolor (for automated scripts)
 
 # Install
+## Native
 * ./scripts/install.sh 
 ## Docker Install
-docker build .
+docker build . -t novia:v1
+## Docker Run
+docker run -it novia:v1 /bin/bash
 
 ## Known Compilation Issues
 * Compiling llvm from source code is quite compute demanding. If you are just using
@@ -25,12 +28,12 @@ type make and let the linking process finish with just 1 thread.
 
 # Usage Instructions
 1. Generate a unified LLVM IR bitcode file of the binary to analyze:
-  1. Use clang and -emit-llvm flag to generate bitcode files 
-  2. Use llvm-link to merge several bitcode fites into a unified bitcode file
+   1. Use clang and -emit-llvm flag to generate bitcode files 
+   2. Use llvm-link to merge several bitcode fites into a unified bitcode file
 2. Apply methodology:
-  1. Generate a configuration file with two variables $EXECARGS (Execution arguments that will be used when profiling the workload) $LDFLAGS (Linking flags and libraries needed to compile the workload)
-  2. Run the novia tool ( *novia* bitcode ) [source env.sh or use the full path to the tool in fusion/bin]
-  3. The tool will generate a *novia* folder containing the intermediatte bitcode files of the analysis
+   1. Generate a configuration file with two variables $EXECARGS (Execution arguments that will be used when profiling the workload) $LDFLAGS (Linking flags and libraries needed to compile the workload)
+   2. Run the novia tool ( *novia* bitcode ) [source env.sh or use the full path to the tool in fusion/bin]
+   3. The tool will generate a *novia* folder containing the intermediatte bitcode files of the analysis
 
 # Getting Started
 
@@ -43,6 +46,5 @@ NOVIA comes with several automated examples in the subdirectory fusion/examples.
 # Directory Structure
 
 * fusion: novia related scripts and files
-  * 
 
 
