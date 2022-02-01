@@ -68,7 +68,7 @@ When the novia automated analysis script is executed on a bitcode file, the foll
     - **bblist.txt**: Basic blocks to analyze
     - **histogram.txt**: Profiling data per basic block
     - **weights.txt**: Derived data analysis from histogram.txt 
-    - **orig.csv*/**merge.csv**/**split.csv**: Data metrics for different novia stages
+    - **orig.csv**/**merge.csv**/**split.csv**: Data metrics for different novia stages
     - **io_overhead.csv**: Metrics refering to input and output variables for the accelerators
     - **stats.csv**: Other metrics
     - **source.log**: location in source code of basic blocks and accelerators
