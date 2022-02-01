@@ -28,20 +28,20 @@ stage due to the system running out of memory. If that happens just go into llvm
 type make and let the linking process finish with just 1 thread.
 
 # Usage Instructions
-0. *source env.sh* before usage.
+0. **source env.sh** before usage.
 1. Generate a unified LLVM IR bitcode file of the binary to analyze:
    1. Use clang and -emit-llvm flag to generate bitcode files 
    2. Use llvm-link to merge several bitcode fites into a unified bitcode file
 2. Apply methodology:
    1. Generate a configuration file with two variables $EXECARGS (Execution arguments that will be used when profiling the workload) $LDFLAGS (Linking flags and libraries needed to compile the workload)
-   2. Run the novia tool ( *novia* bitcode ) [source env.sh or use the full path to the tool in fusion/bin]
-   3. The tool will generate a *novia* folder containing the intermediatte bitcode files of the analysis
+   2. Run the novia tool ( **novia** *bitcode_file* ) [source env.sh or use the full path to the tool in fusion/bin]
+   3. The tool will generate a **novia** folder containing the intermediatte bitcode files of the analysis
 
 # Getting Started
 
 NOVIA comes with several automated examples in the subdirectory fusion/examples. The examples contain the base source code, a makefile that generates the input bitcode for novia and a configuration file needed for novia to compile bitcode (mainly the libraries and linking flags needed).
 
-0. *source env.sh*
+0. **source env.sh**
 1. cd fusion/examples/incremental
 2. make
 3. novia incremental.bc
@@ -60,18 +60,18 @@ NOVIA comes with several automated examples in the subdirectory fusion/examples.
 When the novia automated analysis script is executed on a bitcode file, the following directories and files will be generated in the bitcode's directory:
 
 - novia folder:
-  - *copy of original analyzed bitcode file*
-  - *executable binary of instrumented bitcode file*
+  - **copy of original analyzed bitcode file**
+  - **executable binary of instrumented bitcode file**
   - novia/output: annotated bitcode and configuration file for the SoC/Accelerator integration
   - novia/bitcode: folder with intermediate optimized bitcode files
   - novia/data: raw data files for analysis and output summaries:
-    - *bblist.txt*: Basic blocks to analyze
-    - *histogram.txt*: Profiling data per basic block
-    - *weights.txt*: Derived data analysis from histogram.txt 
-    - *orig.csv*/*merge.csv*/*split.csv*: Data metrics for different novia stages
-    - *io_overhead.csv*: Metrics refering to input and output variables for the accelerators
-    - *stats.csv*: Other metrics
-    - *source.log*: location in source code of basic blocks and accelerators
+    - **bblist.txt**: Basic blocks to analyze
+    - **histogram.txt**: Profiling data per basic block
+    - **weights.txt**: Derived data analysis from histogram.txt 
+    - **orig.csv*/**merge.csv**/**split.csv**: Data metrics for different novia stages
+    - **io_overhead.csv**: Metrics refering to input and output variables for the accelerators
+    - **stats.csv**: Other metrics
+    - **source.log**: location in source code of basic blocks and accelerators
 
   - novia/imgs: DFGs of the analyzed basic blocks, merged ISs and final accelerator candidates in .png format
 
