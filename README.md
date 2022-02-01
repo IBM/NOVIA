@@ -55,21 +55,23 @@ NOVIA comes with several automated examples in the subdirectory fusion/examples.
    - fusion/bin: link to novia executable script
 - scripts: installation scripts
 
-# Generated Output
+# Generated Files
 
 When the novia automated analysis script is executed on a bitcode file, the following directories and files will be generated in the bitcode's directory:
 
 - novia folder:
+  - *copy of original analyzed bitcode file*
+  - *executable binary of instrumented bitcode file*
   - novia/output: annotated bitcode and configuration file for the SoC/Accelerator integration
   - novia/bitcode: folder with intermediate optimized bitcode files
   - novia/data: raw data files for analysis and output summaries:
-    - bblist.txt: Basic blocks to analyze
-    - histogram.txt: Profiling data per basic block
-    - weights.txt: Derived data analysis from histogram.txt 
-    - orig.csv/merge.csv/split.csv: Data metrics for different novia stages
-    - io_overhead.csv: Metrics refering to input and output variables for the accelerators
-    - stats.csv: Other metrics
-    - source.log: location in source code of basic blocks and accelerators
+    - *bblist.txt*: Basic blocks to analyze
+    - *histogram.txt*: Profiling data per basic block
+    - *weights.txt*: Derived data analysis from histogram.txt 
+    - *orig.csv*/*merge.csv*/*split.csv*: Data metrics for different novia stages
+    - *io_overhead.csv*: Metrics refering to input and output variables for the accelerators
+    - *stats.csv*: Other metrics
+    - *source.log*: location in source code of basic blocks and accelerators
 
   - novia/imgs: DFGs of the analyzed basic blocks, merged ISs and final accelerator candidates in .png format
 
