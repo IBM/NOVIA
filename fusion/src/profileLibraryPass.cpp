@@ -1,3 +1,18 @@
+//===-----------------------------------------------------------------------------------------===// 
+// Copyright 2022 IBM
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===-----------------------------------------------------------------------------------------===// 
 #include <string>
 #include <map>
 #include <set>
@@ -391,7 +406,7 @@ int main(int argc, char *argv[]){
   funcs.push_back(f);
   BB = BasicBlock::Create(Context,"entry",f);
   Builder.SetInsertPoint(BB);
-  ret = Builder.CreateGEP(f->getArg(0),index_vector);
+  ret = Builder.CreateGEP(Type::getInt32Ty(Context),f->getArg(0),index_vector);
   Builder.CreateRet(ret);
   // FNeg
    /*
@@ -482,7 +497,7 @@ int main(int argc, char *argv[]){
       inputs.push_back(fmain->getArg(input_index++));
     }
     Value *Out = Builder.CreateCall(funcs[i],inputs);
-    Value *GEP = Builder.CreateStructGEP(RetVal,i);
+    Value *GEP = Builder.CreateStructGEP(outputStruct->getTypeAtIndex(i),RetVal,i);
     Builder.CreateStore(Out,GEP,true);
 
   }

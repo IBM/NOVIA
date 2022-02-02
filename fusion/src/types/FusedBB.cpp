@@ -1,3 +1,18 @@
+//===-----------------------------------------------------------------------------------------===// 
+// Copyright 2022 IBM
+// 
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//===-----------------------------------------------------------------------------------------===// 
 #include "FusedBB.hpp"
 
 
@@ -1071,7 +1086,7 @@ bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu){
       pos = 0;
       for(auto E : *this->liveOutPos){
         if(E->count(BB)){
-          Value *outGEPData = Builder.CreateStructGEP(outStruct,pos);
+          Value *outGEPData = Builder.CreateStructGEP(cast<StructType>(outStruct->getType()),outStruct,pos);
           Value *out = Builder.CreateLoad((*(*E)[BB]->begin())->getType(),outGEPData);
           for(auto outV : *(*E)[BB]){
             outV->replaceAllUsesWith(out);
@@ -1609,7 +1624,7 @@ Function* FusedBB::createInline(Module *Mod){
     }*/
     pos = 0;
     for(auto Vout : *this->LiveOut){
-      Value *outGEPData = Builder.CreateStructGEP(outData,pos);
+      Value *outGEPData = Builder.CreateStructGEP(outStruct,outData,pos);
       Builder.CreateStore(Vout,outGEPData);
       pos++;
     }
@@ -2038,7 +2053,10 @@ void FusedBB::getDebugLoc(stringstream &output){
           string dir = cast<DIScope>(DL.getScope())->getDirectory().str();
           funcs.insert(Iorig->getParent()->getParent()->getName().str());
           debug_desc aux = {line,col,this->isMergedI(&I)};
-          files[dir+"/"+file].insert(aux);
+          if(file[0]=='/')
+            files[file].insert(aux);
+          else
+            files[dir+"/"+file].insert(aux);
         } 
       }
     }
