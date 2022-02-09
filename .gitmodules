@@ -1,6 +1,3 @@
 [submodule "llvm-project"]
 	path = llvm-project
   url = git@github.ibm.com:NOVIA/llvm-project.git
-[submodule "graphviz"]
-	path = graphviz
-	url = https://gitlab.com/graphviz/graphviz.git
