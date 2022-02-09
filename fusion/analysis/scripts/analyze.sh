@@ -79,7 +79,7 @@ echo -n "Linking Timers and Compiling: "
 #  $LLVM_BIN/llc -filetype=obj $name_ins 
 #fi
 if [ ! -f $name_ins_bin ]; then
-  $LLVM_BIN/clang++ $name_ins -static -L $FUSE_LIB -ltimer_x86 $2 -o "$name_ins_bin"
+  $LLVM_BIN/clang++ $name_ins -L $FUSE_LIB -ltimer_x86 $2 -o "$name_ins_bin"
   echo $2
   echo "done"
 else

@@ -30,9 +30,11 @@ def main(argv):
             if str(split_fstats['BB'][i]) in line:
                 start = num
                 funcs = re.search("\[.*\]",line).group(0)[1:-2].split(';')
-                for j in range(len(funcs)):
-                    funcs[j]= subprocess.check_output(['llvm-cxxfilt',funcs[j]]).decode('UTF-8').rstrip()
-                    print(funcs[j])
+                if(funcs[0] != ''):
+                    for j in range(len(funcs)):
+                        funcs[j]= subprocess.check_output(['llvm-cxxfilt',funcs[j]]).decode('UTF-8').rstrip()
+                else:
+                    funcs[0] = colored("Missing Info","red")
             elif start != -1 and not line[0].isnumeric() and line[0] != '\n' and line[0] != '\t':
                 end = num
                 break
@@ -42,7 +44,7 @@ def main(argv):
             code += colored("Could not find source code;","red")+" use \"-g\" flag when compiling to include debug information in the bitcode"
         fsource.seek(0)
 
-        print("Top {0} Accelerator - Name: {1} ; Functions: {2}".format(i+1,colored(split_fstats['BB'][i],"green"),colored('{'+funcs[j]+'}',"blue")))
+        print("Top {0} Accelerator - Name: {1} ; Functions: {2}".format(i+1,colored(split_fstats['BB'][i],"green"),colored('{'+''.join(funcs)+'}',"blue")))
         if(split_fstats['MergedBBs'][i] > 1):
             print(colored("Inline accelerator wirh merges from {0:.0f} Basic Blocks".format(split_fstats['MergedBBs'][i]),"green"))
         else:

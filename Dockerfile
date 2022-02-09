@@ -23,18 +23,8 @@ RUN apt-get install -y cmake \
                     python3-pandas \
                     python3-termcolor 
 
-
-  
-# REMOVE BEFORE PUSHING
-RUN mkdir /root/.ssh
-ADD id_rsa /root/.ssh/id_rsa
-RUN chmod 700 /root/.ssh/id_rsa
-RUN chown -R root:root /root/.ssh
-RUN ssh-keyscan github.com >> /root/.ssh/known_hosts
-# REMOVE BEFORE PUSHING
-
 WORKDIR /opt/
-#RUN git clone https://github.com/IBM/NOVIA
+RUN git clone https://github.com/IBM/NOVIA
 RUN git clone git@github.com:dtrilla/novia.git
 RUN cd novia && ./scripts/install.sh
 RUN echo "source /opt/novia/env.sh" >> ~/.bashrc
