@@ -80,9 +80,9 @@ When the novia automated analysis script is executed on a bitcode file, the foll
   - novia/output: annotated bitcode and configuration file for the SoC/Accelerator integration
   - novia/bitcode: folder with intermediate optimized bitcode files
   - novia/data: raw data files for analysis and output summaries:
-    - **bblist.txt**: Basic blocks to analyze
-    - **histogram.txt**: Profiling data per basic block
-    - **weights.txt**: Derived data analysis from histogram.txt 
+    - **bblist.txt**: List of basic blocks analyzed by the tool
+    - **histogram.txt**: Profiling data per basic block; data fields - [cycle count,total application cycle count,iterations]
+    - **weights.txt**: Derived data analysis from histogram.txt; data fields - [time % of bitcode,time % of entire application,iterations] 
     - **orig.csv**/**merge.csv**/**split.csv**: Data metrics for different novia stages
     - **io_overhead.csv**: Metrics refering to input and output variables for the accelerators
     - **stats.csv**: Other metrics
