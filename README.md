@@ -31,6 +31,10 @@ numpages = {15}
 * libgd-dev qt4-qmake libqt4-dev autoconf automake libtool bison flex (for Graphviz)
 * python3 python3-pandas python3-termcolor (for automated scripts)
 
+## Automated install:
+  * llvm 13.0.0 (https://github.com/llvm/llvm-project/tree/llvmorg-13.0.0)
+  * graphviz commit 93d330be (https://gitlab.com/graphviz/graphviz/-/commit/93d330be85c25a5f0b0c86e73f40b4f8d7a42264out)
+
 # Install
 
 ## Native
