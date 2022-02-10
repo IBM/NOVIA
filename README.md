@@ -55,6 +55,8 @@ NOVIA comes with several automated examples in the subdirectory fusion/examples.
 2. `make`
 3. `novia incremental.bc`
 
+Type `novia -h` for additional help.
+
 # Usage Instructions
 0. `source env.sh` before usage.
 1. Generate a unified LLVM IR bitcode file of the binary to analyze:
