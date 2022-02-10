@@ -50,19 +50,19 @@ This requires the dependencies mentioned in the previous section, and will insta
 # Getting Started
 NOVIA comes with several automated examples in the subdirectory fusion/examples. The examples contain the base source code, a makefile that generates the input bitcode for novia and a configuration file needed for novia to compile bitcode (mainly the libraries and linking flags needed).
 
-0. `**source env.sh**`
+0. `source env.sh`
 1. `cd fusion/examples/incremental`
 2. `make`
 3. `novia incremental.bc`
 
 # Usage Instructions
-0. `**source env.sh**` before usage.
+0. `source env.sh` before usage.
 1. Generate a unified LLVM IR bitcode file of the binary to analyze:
    1. Use clang and -emit-llvm flag to generate bitcode files 
    2. Use llvm-link to merge several bitcode fites into a unified bitcode file
 2. Apply methodology:
    1. Generate a configuration file with two variables $EXECARGS (Execution arguments that will be used when profiling the workload) $LDFLAGS (Linking flags and libraries needed to compile the workload). **You can find examples of that in the example directory (e.g., fusion/examples/incremental/conf.sh)**
-   2. Run the novia tool ( `**novia** *bitcode_file*` ) [source env.sh or use the full path to the tool in fusion/bin]
+   2. Run the novia tool ( `novia *bitcode_file*` ) [`source env.sh` or use the full path to the tool in fusion/bin]
    3. The tool will generate a **novia** folder containing the intermediatte bitcode files of the analysis
 
 # Directory Structure
@@ -86,8 +86,9 @@ When the novia automated analysis script is executed on a bitcode file, the foll
   - novia/data: raw data files for analysis and output summaries:
     - **bblist.txt**: List of basic blocks analyzed by the tool
     - **histogram.txt**: Profiling data per basic block:
-      data fields - [cycle count,total application cycle count,iterations]
-    - **weights.txt**: Derived data analysis from histogram.txt; data fields - [time % of bitcode,time % of entire application,iterations] 
+      - data fields-[cycle count,total application cycle count,iterations]
+    - **weights.txt**: Derived data analysis from histogram.txt:
+      - data fields-[time % of bitcode,time % of entire application,iterations] 
     - **orig.csv**/**merge.csv**/**split.csv**: Data metrics for different novia stages
     - **io_overhead.csv**: Metrics refering to input and output variables for the accelerators
     - **stats.csv**: Other metrics
