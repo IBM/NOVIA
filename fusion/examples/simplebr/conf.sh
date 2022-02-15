@@ -1,0 +1,3 @@
+CFLAGS="-O0 -std=c++11 -g"
+LDFLAGS=
+EXECARGS="1"
