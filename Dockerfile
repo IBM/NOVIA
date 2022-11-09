@@ -25,7 +25,6 @@ RUN apt-get install -y cmake \
 
 WORKDIR /opt/
 RUN git clone https://github.com/IBM/NOVIA
-RUN git clone git@github.com:dtrilla/novia.git
-RUN cd novia && ./scripts/install.sh
+RUN cd NOVIA && ./scripts/install.sh
 RUN echo "source /opt/novia/env.sh" >> ~/.bashrc
 

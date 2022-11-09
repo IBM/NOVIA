@@ -29,12 +29,13 @@ int main(int argn, char **argc){
   for(int i = 0; i < N; ++i)
     c[i] = a[i]-b[i];
 
+  /*
   cout << "Result: " << endl;
   for(int i = 0; i < N; ++i)
     cout << to_string(a[i]) << " ";
   for(int i = 0; i < N; ++i)
     cout << to_string(c[i]) << " ";
   cout << endl;
-
+*/
 	return 0;
 }
