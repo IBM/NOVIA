@@ -27,12 +27,13 @@ def main(argv):
         for num, line in enumerate(fsource, 1):
             if str(fstats['BB'][i]) in line:
                 start = num
-                funcs = re.search("\[.*\]",line).group(0)[1:-2].split(';')
-                if(funcs[0] != ''):
-                    for j in range(len(funcs)):
-                        funcs[j]= subprocess.check_output(['llvm-cxxfilt',funcs[j]]).decode('UTF-8').rstrip()
-                else:
-                    funcs[0] = colored("Missing Info","red")
+                if re.search("\[.*\]", line) is not None:
+                    funcs = re.search("\[.*\]",line).group(0)[1:-2].split(';')
+                    if(funcs[0] != ''):
+                        for j in range(len(funcs)):
+                            funcs[j]= subprocess.check_output(['llvm-cxxfilt',funcs[j]]).decode('UTF-8').rstrip()
+                    else:
+                        funcs[0] = colored("Missing Info","red")
             elif start != -1 and not line[0].isnumeric() and line[0] != '\n' and line[0] != '\t':
                 end = num
                 break
