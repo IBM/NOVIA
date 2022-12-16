@@ -39,7 +39,7 @@ numpages = {15}
 ## Native
 This requires the dependencies mentioned in the previous section, and will install the automated dependencies.
 
-`./scripts/install.sh`
+`cd ./scripts/ && ./install.sh`
 
 ## Docker Install
 `docker build . -t novia:v1`
