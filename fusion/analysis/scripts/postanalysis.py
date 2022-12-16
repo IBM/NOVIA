@@ -11,7 +11,7 @@ def main(argv):
     numbbs = int(argv[2])
     fsource = open(argv[3],'r')
 
-    split_fstats = split_fstats.sort_values(by=['SpeedUp'])
+    split_fstats = split_fstats.sort_values(by=['SpeedUp'],ascending=False)
 
     # General Stats
     if(len(split_fstats) < numbbs):
@@ -20,14 +20,16 @@ def main(argv):
     print("Summary for top {0} proposed inline accelerators:".format(numbbs))
     #print("Bitcode execution time: {0:.2f}% - Entire application execution time: {1:.2f}%.".format(fstats['Weight'][:numbbs].sum()*100,fstats['Weight with external Calls'][:numbbs].sum()*100))
     # Per BB stats
-    for i in range(numbbs):
+    bbindex = 0
+    for i in split_fstats.index[:numbbs]:
         start = -1
         finish = -1
         end = -1
         funcs = []
         code = ""
+        bbindex += 1 
         for num, line in enumerate(fsource, 1):
-            if str(split_fstats['BB'][i]) in line:
+            if str(split_fstats['BB'][i]) in line[:len(str(split_fstats['BB'][i]))]:
                 start = num
                 funcs = re.search("\[.*\]",line).group(0)[1:-2].split(';')
                 if(funcs[0] != ''):
@@ -44,7 +46,7 @@ def main(argv):
             code += colored("Could not find source code;","red")+" use \"-g\" flag when compiling to include debug information in the bitcode"
         fsource.seek(0)
 
-        print("Top {0} Accelerator - Name: {1} ; Functions: {2}".format(i+1,colored(split_fstats['BB'][i],"green"),colored('{'+''.join(funcs)+'}',"blue")))
+        print("Top {0} Accelerator - Name: {1} ; Functions: {2}".format(bbindex,colored(split_fstats['BB'][i],"green"),colored('{'+''.join(funcs)+'}',"blue")))
         if(split_fstats['MergedBBs'][i] > 1):
             print(colored("Inline accelerator wirh merges from {0:.0f} Basic Blocks".format(split_fstats['MergedBBs'][i]),"green"))
         else:

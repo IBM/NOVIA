@@ -10,7 +10,6 @@ def main(argv):
     numbbs = int(argv[1])
     fsource = open(argv[2],'r')
 
-
     # General Stats
     if(len(fstats) < numbbs):
         print("Specified number of Basic Blocks greater than analyzed ones. Reporting the latter")
@@ -25,14 +24,15 @@ def main(argv):
         funcs = []
         code = ""
         for num, line in enumerate(fsource, 1):
-            if str(fstats['BB'][i]) in line:
+            if str(fstats['BB'][i]) == line[:len(str(fstats['BB'][i]))]:
                 start = num
-                funcs = re.search("\[.*\]",line).group(0)[1:-2].split(';')
-                if(funcs[0] != ''):
-                    for j in range(len(funcs)):
-                        funcs[j]= subprocess.check_output(['llvm-cxxfilt',funcs[j]]).decode('UTF-8').rstrip()
-                else:
-                    funcs[0] = colored("Missing Info","red")
+                if re.search("\[.*\]",line) is not None:
+                    funcs = re.search("\[.*\]",line).group(0)[1:-2].split(';')
+                    if(funcs[0] != ''):
+                        for j in range(len(funcs)):
+                            funcs[j]= subprocess.check_output(['llvm-cxxfilt',funcs[j]]).decode('UTF-8').rstrip()
+                    else:
+                        funcs[0] = colored("Missing Info","red")
             elif start != -1 and not line[0].isnumeric() and line[0] != '\n' and line[0] != '\t':
                 end = num
                 break
