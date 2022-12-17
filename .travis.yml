@@ -11,8 +11,6 @@ addons:
       - gcc-7
       - flex
 
-language: python
-
 cache:
   apt: true
   pip: true
@@ -31,14 +29,8 @@ before_install:
   - cd ${TRAVIS_BUILD_DIR}
 
 install:
-  - ./compile_llvm_minimal.sh
-  - ./compile_graphviz.sh
-  - cd fusion
-  - mkdir build
-  - cd build
-  - source ../../env.sh
-  - cmake ../
-  - make
+  - cd NOVIA
+  - ./scripts/install.sh
 
 notifications:
   email: never
