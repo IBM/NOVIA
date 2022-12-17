@@ -29,6 +29,7 @@ before_install:
   - cd ${TRAVIS_BUILD_DIR}
 
 install:
+  - ls
   - cd NOVIA
   - ./scripts/install.sh
 
