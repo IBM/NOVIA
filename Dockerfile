@@ -20,6 +20,8 @@ RUN apt-get install -y cmake \
                     libtool \
                     bison \
                     flex \
+                    vim \
+                    binutils-dev \
                     python3-pandas \
                     python3-termcolor 
 

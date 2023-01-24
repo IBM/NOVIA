@@ -11,8 +11,6 @@ addons:
       - gcc-7
       - flex
 
-language: python
-
 cache:
   apt: true
   pip: true
@@ -31,7 +29,6 @@ before_install:
   - cd ${TRAVIS_BUILD_DIR}
 
 install:
-  - cd NOVIA
   - ./scripts/install.sh
 
 notifications:
