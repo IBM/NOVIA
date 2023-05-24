@@ -141,6 +141,25 @@ void memRAWDepAnalysis(BasicBlock *BB, map<Instruction*,set<Instruction*> *> *ra
   }
 }
 
+void memWARDepAnalysis(BasicBlock *BB, map<Instruction*,set<Instruction*> *> *warDeps){
+  map<Value*,Instruction*> Ldeps;
+  StoreInst *St;
+  LoadInst *Ld;
+  for(auto &I : *BB){
+    if(Ld = dyn_cast<LoadInst>(&I)){
+      Ldeps[Ld->getPointerOperand()] = &I;
+
+    }
+    else if(St = dyn_cast<StoreInst>(&I)){
+      if(Ldeps.count(St->getPointerOperand())){
+        if(!warDeps->count(Ldeps[St->getPointerOperand()]))
+          (*warDeps)[Ldeps[St->getPointerOperand()]] = new set<Instruction*>;
+        (*warDeps)[Ldeps[St->getPointerOperand()]]->insert(&I);
+      }
+    }
+  }
+}
+
 /**
  * Computes the variables that are LiveIn in a BasicBlock
  *
@@ -275,6 +294,10 @@ void getMetadataMetrics(BasicBlock *BB, vector<double> *data, Module *M){
   double time = 0;
   float num_ld = 0, num_st = 0;
   float power = 0;
+
+  float memreads = 0;
+  float memwrites = 0;
+  
   pair<float,float> crit_path = getCriticalPathCost(BB);
   for(auto I = BB->begin(); I != BB->end() ; ++I){
     time += getSwDelay(&*I);
@@ -282,10 +305,13 @@ void getMetadataMetrics(BasicBlock *BB, vector<double> *data, Module *M){
       if(isa<StoreInst>(I)){
         footprint += DL.getTypeSizeInBits(I->getOperand(0)->getType());
         num_st++;
+        memwrites += DL.getTypeSizeInBits(
+            cast<StoreInst>(I)->getPointerOperand()->getType());
       }
       else{
         footprint += DL.getTypeSizeInBits(I->getType());  
         num_ld++;
+        memreads += DL.getTypeSizeInBits(I->getType());
       }
     }
     else if (isa<SelectInst>(I)){
@@ -327,7 +353,8 @@ void getMetadataMetrics(BasicBlock *BB, vector<double> *data, Module *M){
   float cp = useful/(crit_path.first+crit_path.second); 
   data->push_back(cp/(area*power)/1e9); // Efficiency Gi/smm2W
   float eff_comp = useful/(crit_path.second*area*power)/1e9;
-  //data->push_back(eff_comp);
+  data->push_back(memreads);
+  data->push_back(memwrites);
   return;
 }
 

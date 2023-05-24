@@ -116,7 +116,7 @@ namespace {
         " of Merges,Size,Num Loads,Num Stores,Num Muxs"
         ",Other Instructions,Tseq,Memory Footprint (bits)"
         ",Critical Path Communication,CritPath,Area,"
-        "Static Power,Dynamic Power,Efficiency,Weight,Weight with external Calls\n";
+        "Static Power,Dynamic Power,Efficiency,Memory Read (bits),Memory Write (bits),Weight,Weight with external Calls\n";
 
       // Read the dynamic info file
       readDynInfo(dynamicInfoFile,&profileMap, &totalCycleMap, &iterMap);
@@ -165,6 +165,15 @@ namespace {
             if( BB.getName() == bbs[i].first)
               bbs[i].second = &BB;
 
+      for(int i = 0; i < bbs.size(); ++i){
+        prebb.push_back(new vector<double>);
+        separateBr(bbs[i].second);
+        getMetadataMetrics(bbs[i].second,prebb[prebb.size()-1],&M);
+        prebb[prebb.size()-1]->push_back(profileMap[bbs[i].second->getName().str()]);
+        prebb[prebb.size()-1]->push_back(totalCycleMap[bbs[i].second->getName().str()]);
+		  	bbList.push_back(bbs[i].second);
+      }
+      
       for(auto bb : bbs){
         if(!visualDir.empty() and visLev&1)
           drawBBGraph(bb.second,(char*)("o"+bb.second->getName().str()).c_str(),
@@ -173,15 +182,6 @@ namespace {
           errs() << "Could not find BB: " << bb.first << "\n";
           exit(0);
         }
-      }
-
-      for(int i = 0; i < bbs.size(); ++i){
-        prebb.push_back(new vector<double>);
-        separateBr(bbs[i].second);
-        getMetadataMetrics(bbs[i].second,prebb[prebb.size()-1],&M);
-        prebb[prebb.size()-1]->push_back(profileMap[bbs[i].second->getName().str()]);
-        prebb[prebb.size()-1]->push_back(totalCycleMap[bbs[i].second->getName().str()]);
-		  	bbList.push_back(bbs[i].second);
       }
       
       //STATS
@@ -199,7 +199,7 @@ namespace {
         " of Merges,Size,Num Loads,Num Stores,Num Muxs"
         ",Other Instructions,Tseq,Memory Footprint (bits)"
         ",Critical Path Communication,CritPath,Area,"
-        "Static Power,Dynamic Power,Efficiency,Weight,Saved Area,Overhead Area,"
+        "Static Power,Dynamic Power,Efficiency,Memory Read (bits), Memory Write (bits),Weight,Saved Area,Overhead Area,"
         "Relative Saved Area,SpeedUp,MergedBBs,Area Efficiency,Merit\n";
 
 
@@ -406,7 +406,7 @@ namespace {
 
         std::sort(vCandidates.begin(),vCandidates.end(),compareFused);
         merge.close();
-        split << "BB,Relative Saved Area,Area,SpeedUp,MergedBBs,Size,Tseq,CritPath,Weight,Area Efficiency,Relative SpeedUp,OrigWeight,MergeNum\n";
+        split << "BB,Relative Saved Area,Area,SpeedUp,MergedBBs,Size,Tseq,CritPath,Weight,Area Efficiency,Memory Read (bits),Memory Write (bits),Relative SpeedUp,OrigWeight,MergeNum\n";
         vector<vector<string> > list_bbs;
         stringstream tseq_block;
         stringstream debug_log;
@@ -449,9 +449,8 @@ namespace {
               &profileMap,&iterMap,&subgraphs,&data,&tseq_sub,&tseq_block_aux,&tmp_areas);
 
           if(!visualDir.empty() and visLev&2)
-            drawBBGraph(vCandidates[spl].second,(char*)(vCandidates[spl]
-                .second->getName()).c_str(),visualDir,
-                &subgraphs);
+            drawBBGraph(vCandidates[spl].second,
+                (char*)(("m"+to_string(spl*100)).c_str()),visualDir,&subgraphs);
           
           for(int i=0;i<subgraphs.size();++i){
             if(subgraphs[i]->size() > 0){
@@ -493,8 +492,8 @@ namespace {
                 Function *fSpl;
                 fSpl = splitBB->createInline(&M);
                 splitBB->getDebugLoc(debug_log);
-                if(nfus.count(spl*100+i)){
-                  splitBB->insertInlineCall(fSpl,&VMap,nfu++);
+                if(nfus.count(spl*100+i) or debug){
+                  splitBB->insertInlineCall(fSpl,&VMap,nfu++,debug);
                   splitBB->getConfigString(config_log);
                 }
                 acum_sub_area += tmp_areas[i].first;
@@ -721,6 +720,29 @@ namespace {
 
     markInline() : ModulePass(ID) {}
 
+    void recursiveInline(BasicBlock *BB){
+      vector<CallBase*> inlines;
+      for(Instruction &I: *BB){
+        if(isa<CallInst>(&I)){
+          CallBase *cb = cast<CallBase>(&I);
+          if(cb->getCalledFunction() != BB->getParent())
+            inlines.push_back(cast<CallBase>(&I));
+        }
+      }
+      
+      int uninlinable = 0;
+      if(inlines.size()){
+        for(auto I : inlines){
+          InlineFunctionInfo IFI;
+          if(!InlineFunction(*I,IFI,NULL,false,NULL).isSuccess())
+            uninlinable++;
+        }
+        if(uninlinable != inlines.size())
+          recursiveInline(BB);
+      }
+      return;
+    }
+
     bool runOnModule(Module &M) override {
       // Get the exclusion list
       set<string> exclude;
@@ -732,17 +754,39 @@ namespace {
           exclude.insert(fname);
         exclfile.close();
       }
+			
+      set<string> bbnames;
+      fstream bbfile;
+			string bb_name;
+			bbfile.open(bbFileName);
+			while(bbfile >> bb_name){
+        bbnames.insert(bb_name);
+      }
       
-      int counter = 0;
-      int max_inline_func = M.size()/inlineSteps;
+      //int counter = 0;
+      //int max_inline_func = M.size()/inlineSteps;
+      vector<Instruction*> rmIntr;
       for(Function &F: M)        
-        if(!exclude.count(F.getName().str()) and !F.isIntrinsic() and 
-            counter < max_inline_func){
-          F.removeFnAttr(Attribute::NoInline);
-          F.removeFnAttr(Attribute::OptimizeNone);
-          F.addFnAttr(Attribute::AlwaysInline);
-          counter++;
-        }
+        //if(!exclude.count(F.getName().str()) and !F.isIntrinsic() and 
+        //    counter < max_inline_func){
+        for(BasicBlock &BB: F)
+          if(bbnames.count(BB.getName().str())){
+            recursiveInline(&BB);
+            // Remove Debug Intrinsics
+            for(Instruction &I : BB){
+              // Remove Debug Intrinsics
+              if(isa<DbgInfoIntrinsic>(&I))
+                rmIntr.push_back(&I);
+              }
+                /*Function *CalledFunc = cast<CallBase>(&I)->getCalledFunction();
+                CalledFunc->removeFnAttr(Attribute::NoInline);
+                CalledFunc->removeFnAttr(Attribute::OptimizeNone);
+                CalledFunc->addFnAttr(Attribute::AlwaysInline);*/
+                //counter++;
+              }
+        
+    for(auto I : rmIntr)
+      I->eraseFromParent();
 
       return true;
     }
@@ -782,8 +826,13 @@ namespace {
 		renameBBs() : ModulePass(ID) {}
 
 		bool runOnModule(Module &M) override{
+      vector<BasicBlock*> singlePreds;
+
       for(Function &F: M){
 		  	for(BasicBlock &BB: F){
+          if(BB.hasNPredecessors(1))
+            singlePreds.push_back(&BB);
+
           string name = BB.getName().str();
           string strip_name;
           for(char a: name)
@@ -802,6 +851,11 @@ namespace {
 		  		BB.setName(strip_name);
 		  	}
       }
+      
+      // Joing BBs with single entry/exit blocks
+      for(auto BB : singlePreds)
+        MergeBlockIntoPredecessor(BB);
+
 			return true;
 		}
 	};
@@ -809,7 +863,7 @@ namespace {
 
 
 char mergeBBList::ID = 0;
-static RegisterPass<mergeBBList> a("mergeBBList", "Hello World Pass",
+static RegisterPass<mergeBBList> a("mergeBBList", "Merge BBs",
 									   false, false);
 char renameBBs::ID = 1;
 static RegisterPass<renameBBs> b("renameBBs", "Renames BBs with  unique names",

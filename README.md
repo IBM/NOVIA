@@ -30,6 +30,9 @@ numpages = {15}
 * cmake ninja-build gcc g++ (for build)
 * libgd-dev qt4-qmake libqt4-dev autoconf automake libtool bison flex (for Graphviz)
 * python3 python3-pandas python3-termcolor (for automated scripts)
+* riscv-binutils
+* ariane
+* llvm-project
 
 ## Automatically installed dependencies
   * llvm 13.0.0 (https://github.com/llvm/llvm-project/tree/llvmorg-13.0.0)
@@ -42,7 +45,7 @@ This requires the dependencies mentioned in the previous section, and will insta
 `./scripts/install.sh`
 
 ## Docker Install
-`docker build . -t novia:v1`
+`docker build . -t novia:v2`
 
 ## Docker Run
 `docker run -it novia:v1 /bin/bash`
@@ -96,4 +99,5 @@ When the novia automated analysis script is executed on a bitcode file, the foll
     - **stats.csv**: Other metrics
     - **source.log**: Location in source code of basic blocks and accelerators
   - novia/imgs: DFGs of the analyzed basic blocks, merged ISs and final accelerator candidates in .png format
+  - novia/bin: Binaries compiled from bitcode files
 

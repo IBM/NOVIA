@@ -135,7 +135,7 @@ class FusedBB{
     void inlineInputSelects(SelectInst *,int);
     bool insertOffloadCall(Function *);
     bool insertSoftwareCall(Function *);
-    bool insertInlineCall(Function *, map<Value*,Value*> *,int);
+    bool insertInlineCall(Function *, map<Value*,Value*> *,int,bool);
     void removeOrigInst();
 
     // helpers

@@ -73,7 +73,7 @@ namespace {
             int num_phis = 0;
             for(auto &phi : BB.phis())
               num_phis++;
-            if( BB.size()-num_phis > 2 and !BB.isLandingPad()){
+            if( BB.size()-num_phis > 1 and !BB.isLandingPad()){
               vector<Value*> CallVals;
               vector<Value*> CallValsNoBody;
               tableGV[&BB].first = new GlobalVariable(M,Builder.getInt64Ty(),false,
@@ -144,7 +144,7 @@ namespace {
           "startRd",&M);
       Function *collect = Function::Create(collectTy,Function::ExternalLinkage,
           "profiler_collector",&M);
-      appendToGlobalCtors(M,startRD,0);
+      //appendToGlobalCtors(M,startRD,0);
       BasicBlock *startRDBB = BasicBlock::Create(M.getContext(),"startRDBB",
           startRD);
       Builder.SetInsertPoint(startRDBB);
@@ -210,7 +210,7 @@ namespace {
         Value *iterCounter = Builder.CreateLoad(Builder.getInt64Ty(),
             countGV[GV.first]);
         vector<Value*> sprintfArgs({bufferPtr,sprintfString,bbName,partialCounter,
-            TotalElapsed,iterCounter});
+            totalCounter/*totalElapsed*/,iterCounter});
         Value *size = Builder.CreateCall(sprintf,sprintfArgs);
         Value *size64 = Builder.CreateZExtOrBitCast(size,Builder.getInt64Ty());
         vector<Value*> writeArgs({fd,bufferPtr,size64});

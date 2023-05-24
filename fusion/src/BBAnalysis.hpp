@@ -91,6 +91,7 @@ bool areOpsMergeable(Value*,Value*,BasicBlock*,BasicBlock*,
 bool areInstMergeable(Instruction&,Instruction&);
 void liveInOut(BasicBlock&,SetVector<Value*>*,SetVector<Value*>*);
 void memRAWDepAnalysis(BasicBlock*,map<Instruction*,set<Instruction*>*> *);
+void memWARDepAnalysis(BasicBlock*,map<Instruction*,set<Instruction*>*> *);
 pair<float,float> getCriticalPathCost(BasicBlock *);
 void getDebugLoc(BasicBlock*,stringstream&);
 

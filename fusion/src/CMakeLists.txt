@@ -9,8 +9,19 @@ add_library(fusionlib SHARED
 add_library(instrumentlib SHARED
   instrumentLibraryPass.cpp)
 
+add_library(callgraphlib SHARED
+  callgraphLibraryPass.cpp)
+
 add_library(proflib SHARED
   profileLibraryPass.cpp)
+
+add_library(reuselib SHARED
+  reuseLibraryPass.cpp
+  BBAnalysis.cpp
+  types/FusedFunc.cpp)
+
+add_library(memAnalysis SHARED
+  memoryAnalysisPass.cpp)
 
 #This is wrong but will work for now
 

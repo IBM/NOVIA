@@ -10,8 +10,8 @@ fi
 echo "############################################################################################"
 
 $LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libfusionlib.so -mergeBBList -bbs \
-  "data/bblist.txt" --dynInf "data/weights.txt" --graph_dir imgs --visualLevel 7 \
-  --nfus nfu.txt < $name_rn > $name_novia
+  "data/bblist_inl.txt" --dynInf "data/weights_inl.txt" --graph_dir imgs --visualLevel 7 \
+  --nfus "data/nfu.txt" < $name_inl > $name_novia
 
 if [ ! -z $VERBOSE ]; then
   echo "Generated inlined bitcode file ($name_novia)"

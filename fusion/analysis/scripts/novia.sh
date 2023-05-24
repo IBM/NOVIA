@@ -8,7 +8,7 @@ Help(){
   echo "The helper will create a Novia folder in the location of the bitcode and run 
         the Novia analysis in it."
   echo 
-  echo "USAGE: novia [-h|v] <input bitfile> [-c conf] [-p perf]"
+  echo "USAGE: novia [-h|v] <input bitfile> [-c conf] [-p perf] [-r novia_bitcode]"
   echo "bitfile: Path to the llvm-ir bitcode file to analyze."
   echo 
   echo "OPTIONS:"
@@ -16,6 +16,7 @@ Help(){
   echo -e "-v\tVerbose mode."
   echo -e "-t\tTest mode. Generated bitcode with inline accelerators will be validated against 
         output of original bitcode"
+  echo -e "-r <novia_bitcode>\tReuse mode. Search already developed inline functions in a new bitcode file"
   echo -e "-c <config file>\tPath to config file with compile and link flags for the 
         application."
   echo -e "-p <performance threshold>\tNumber of basic blocks to analyze.
@@ -30,6 +31,7 @@ Help(){
 VERBOSE=0
 TEST=0
 BITCODE=""
+MATCH=""
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h) # Display Help
@@ -50,6 +52,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     -p) # Perf threshold
       PERF="$2"
+      shift
+      shift
+      ;;
+    -r) # Matching Mode bc
+      MATCH="$2"
       shift
       shift
       ;;
@@ -76,7 +83,7 @@ else
   fi
   BITCODE_PATH=$(dirname -- "$(readlink -f -- "$BITCODE")")
   if [ -z $CONFIG ]; then
-    CONFIG=$BITCODE_PATH/conf.sh
+    CONFIG=conf.sh
     if [ ! -f $CONFIG ]; then
       echo "Invalid Arguments: Missing or Unable to open default compile config file ($CONFIG)"
       exit 1
@@ -93,19 +100,36 @@ fi
 ###################################################################################################
 scriptDir=$(dirname -- "$(readlink -f -- "$BASH_SOURCE")")
 source $scriptDir/../../../env.sh
+source $scriptDir/../../../novia.conf
 
-if [ ! -z $VERBOSE ]; then
-  echo -e "Starting Novia Analysis:"
-fi
-if [ -z $PERF ]; then
+if [ -z $MATCH ]; then
   if [ ! -z $VERBOSE ]; then
-    echo -e "Using default performance threshold (0.8)"
+    echo -e "Starting Novia Analysis:"
   fi
-  PERF=0.8
+  if [ -z $PERF ]; then
+    if [ ! -z $VERBOSE ]; then
+      echo -e "Using default performance threshold (0.8)"
+    fi
+    PERF=0.8
+  fi
+else
+  if [ ! -z $VERBOSE ]; then
+    echo -e "Starting Novia Reuse Analysis:"
+  fi
 fi
 
-mkdir -p $BITCODE_PATH/novia
-cp $BITCODE "$BITCODE_PATH/novia/."
-cd $BITCODE_PATH/novia
-source $CONFIG
-source $scriptDir/analyze.sh $BITCODE "$LDFLAGS" "$EXECARGS" $PERF y
+
+if [ -z $MATCH ]; then
+  mkdir -p $BITCODE_PATH/novia
+  cp $BITCODE "$BITCODE_PATH/novia/."
+  cd $BITCODE_PATH/novia
+  source $BITCODE_PATH/$CONFIG
+  source $scriptDir/analyze.sh $BITCODE "$LDFLAGS" "$EXECARGS" $PERF y
+  ### Test output bitcode
+  if [ ! -z $TEST ]; then
+    source $scriptDir/testing.sh 
+  fi
+else
+  source $scriptDir/reuse.sh $MATCH $BITCODE
+fi
+

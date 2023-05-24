@@ -116,14 +116,6 @@ void separateBr(BasicBlock *BB){
     builder.SetInsertPoint(BB);
     builder.CreateBr(newBB);
   }
-  // Remove Debug Intrinsics
-  
-  vector<Instruction*> rmIntr;
-  for(auto &I : *BB)
-    if(isa<DbgInfoIntrinsic>(&I))
-      rmIntr.push_back(&I);
-  for(auto I : rmIntr)
-      I->eraseFromParent();
 }
 
 void KahnSort(BasicBlock *BB){

@@ -14,25 +14,30 @@ name="${name_ext%.*}"
 name_inl="bitcode/${name}_inl.bc"
 name_reg="bitcode/${name}_reg.bc"
 name_rn="bitcode/${name}_rn.bc"
+name_rn_inl="bitcode/${name}_rn_inl.bc"
 name_ins="bitcode/${name}_ins.bc"
+name_ins_inl="bitcode/${name}_ins_inl.bc"
 name_o="${name}_ins.o"
-name_ins_bin="${name}_ins.bin"
+name_ins_bin="bin/${name}_ins.bin"
+name_ins_inl_bin="bin/${name}_ins_inl.bin"
 
 INLINE_STEPS=0
 
 mkdir -p bitcode
 mkdir -p data
 mkdir -p output
+mkdir -p bin
 echo "############################################################################################"
 echo "Analyzing $name: Preparation phase"
 echo "############################################################################################"
 if [ $INLINE_STEPS == 0 ]; then
-  cp $name_ext $name_inl
+  #cp $name_ext $name_inl
+  echo "ok"
 else
   echo -n "Inlining: "
   if [ ! -f $name_inl ]; then
-    tmp_in=tmp_in.bc
-    tmp_out=tmp_out.bc
+    tmp_in="bitcode/tmp_in.bc"
+    tmp_out="bitcode/tmp_out.bc"
     for i in $(seq $INLINE_STEPS)
     do
       echo -n "Step $i "
@@ -41,7 +46,7 @@ else
       else
         $LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libfusionlib.so -markInline -inlStep $INLINE_STEPS < $tmp_in > $tmp_out
       fi
-      $LLVM_BIN/opt -enable-new-pm=0 -inline < $tmp_out > $tmp_in
+      $LLVM_BIN/opt -enable-new-pm=0 -always-inline < $tmp_out > $tmp_in
     done
     cp $tmp_in $name_inl
     echo "done"
@@ -52,13 +57,13 @@ fi
 
 echo -n "Optimizing Memory: "
 if [ ! -f $name_reg ]; then
-  $LLVM_BIN/opt -enable-new-pm=0 -mem2reg < $name_inl > $name_reg
+  $LLVM_BIN/opt -enable-new-pm=0 -mem2reg < $name_ext > $name_reg
   echo "done"
 else
   echo "reused"
 fi
 
-echo -n "Renaming: "
+echo -n "Renaming Pre-inline: "
 if [ ! -f $name_rn ]; then
   $LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libfusionlib.so --renameBBs < $name_reg > "$name_rn"
   echo "done"
@@ -66,7 +71,7 @@ else
   echo "reused"
 fi
 
-echo -n "Instrumenting: "
+echo -n "Instrumenting Pre-inline: "
 if [ ! -f $name_ins ]; then
   $LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libinstrumentlib.so --instrumentBBs < $name_rn > $name_ins
   echo "done"
@@ -74,19 +79,18 @@ else
   echo "reused"
 fi
 
-echo -n "Linking Timers and Compiling: "
+echo -n "Linking Timers and Compiling Pre-inline: "
 #if [ ! -f $name_o ]; then
 #  $LLVM_BIN/llc -filetype=obj $name_ins 
 #fi
 if [ ! -f $name_ins_bin ]; then
   $LLVM_BIN/clang++ $name_ins -L $FUSE_LIB -ltimer_x86 $2 -o "$name_ins_bin"
-  echo $2
   echo "done"
 else
   echo "reused"
 fi
 
-echo -n "Profiling: ./$name_ins_bin $(echo $3 | tr -d \"):"
+echo -n "Profiling Pre-inline: ./$name_ins_bin $(echo $3 | tr -d \"):"
 if [ ! -f data/histogram.txt ]; then
   EVAL=$(echo "./$name_ins_bin $(echo $3 | tr -d \")")
   eval $EVAL
@@ -96,11 +100,53 @@ else
   echo "reused"
 fi
 
-echo "Processing Histogram"
+echo "Processing Histogram Pre-inline:"
 python3 $scriptDir/normalize.py data/histogram.txt data/weights.txt data/bblist.txt $4
 if [ $? -ne 0 ]; then
   exit 1
 fi
+
+
+echo -n "Inlining: "
+if [ ! -f $name_inl ]; then
+  $LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libfusionlib.so -markInline -bbs data/bblist.txt < $name_rn > $name_inl
+  echo "done"
+else
+  echo "reused"
+fi
+
+echo -n "Instrumenting Post-inline: "
+if [ ! -f $name_ins_inl ]; then
+  $LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libinstrumentlib.so --instrumentBBs < $name_inl > $name_ins_inl
+  echo "done"
+else
+  echo "reused"
+fi
+
+echo -n "Linking Timers and Compiling Post-inline: "
+if [ ! -f $name_ins_inl_bin ]; then
+  $LLVM_BIN/clang++ $name_ins_inl -L $FUSE_LIB -ltimer_x86 $2 -o "$name_ins_inl_bin"
+  echo "done"
+else
+  echo "reused"
+fi
+
+echo -n "Profiling Post-inline: ./$name_ins_inl_bin $(echo $3 | tr -d \"):"
+if [ ! -f data/histogram_inl.txt ]; then
+  EVAL=$(echo "./$name_ins_inl_bin $(echo $3 | tr -d \")")
+  eval $EVAL
+  mv histogram.txt data/histogram_inl.txt
+  echo "done"
+else
+  echo "reused"
+fi
+
+echo "Processing Histogram Post-inline:"
+python3 $scriptDir/normalize.py data/histogram_inl.txt data/weights_inl.txt data/bblist_inl.txt $4
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+
 
 if [ $5 == "y" ]; then
   source $scriptDir/merge.sh $1 $4 

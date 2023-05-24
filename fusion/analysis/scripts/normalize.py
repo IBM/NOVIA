@@ -12,7 +12,7 @@ def main():
     for line in fi:
         data = line.split()
         pcycles += float(data[1])
-        tcycles = float(data[2])
+        tcycles += float(data[2])
     fi.seek(0)
     list = []
     for line in fi:

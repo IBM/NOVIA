@@ -1037,7 +1037,7 @@ void FusedBB::annotateMerge(Instruction* Iorig, Instruction *Imerg, BasicBlock* 
   //verifyModule(*F->getParent());
 }*/
 
-bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu){
+bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu, bool dbg){
   static IRBuilder<> Builder(*Context);
   vector<Type*> inputTypes;
   vector<Instruction*> removeInst;
@@ -1060,6 +1060,13 @@ bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu){
           //IntrinsicArgs[pos] = ValueAsMetadata::get(Args[pos]);
           IntrinsicArgs[pos] = MDString::get(*Context,Args[pos]->getName());
           //IntrinsicArgs[pos] = Args[pos]->getType();
+          if(!dbg){
+            Builder.SetInsertPoint(cast<Instruction>(inV));
+            Builder.CreateIntrinsic(Intrinsic::set_load_nfu,{},
+                {Builder.getInt32(nfu),Builder.getInt32(pos+1),Builder.getInt32(0),
+                Builder.getInt32(0)});
+
+          }
         }
         else{
           Args[pos] = Constant::getNullValue(F->getArg(pos)->getType());
@@ -1068,8 +1075,6 @@ bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu){
           //IntrinsicArgs[pos] = Args[pos]->getType();
         pos++;
       }
-      ArrayRef<Type*> IntrinsicArgTy;
-			
       
       // Removing inlined instructions
       auto rI = BB->rbegin();
@@ -1078,21 +1083,37 @@ bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu){
           break;
       }
       Builder.SetInsertPoint(&(*--rI));
-      Value *outStruct = Builder.CreateCall(F,Args);
-      /*Value *intStruct = Builder.CreateIntrinsic(Intrinsic::exec_nfu, IntrinsicArgTy,
-          {Builder.getInt8(nfu), Builder.getInt8((*ConfigMap)[BB])});*/
+
+      // Call to Inline Accelerator
+      Value *outStruct, *intStruct;
+      if(dbg)
+        outStruct = Builder.CreateCall(F,Args);
+      else{
+        intStruct = Builder.CreateIntrinsic(Intrinsic::exec_nfu, 
+          {},
+          {Builder.getInt32(nfu), Builder.getInt32((*ConfigMap)[BB])});
+      }
 
       //LiveOuts
       pos = 0;
       for(auto E : *this->liveOutPos){
         if(E->count(BB)){
-          Value *outGEPData = Builder.CreateStructGEP(cast<StructType>(outStruct->getType()),outStruct,pos);
-          Value *out = Builder.CreateLoad((*(*E)[BB]->begin())->getType(),outGEPData);
+          Value *outGEPData, *out;
+          if(dbg){
+            outGEPData = Builder.CreateStructGEP(cast<StructType>(outStruct->getType()),outStruct,pos);
+            out = Builder.CreateLoad((*(*E)[BB]->begin())->getType(),outGEPData);
+          }
           for(auto outV : *(*E)[BB]){
+            if(!dbg){
+              out = Builder.CreateIntrinsic(Intrinsic::pop_nfu, 
+                {outV->getType()},
+                {Builder.getInt32(nfu),Builder.getInt32(pos)});
+            }
             outV->replaceAllUsesWith(out);
             // If the out value is the new livein of a merged bb we copy it's pos
             (*VMap)[outV] = out;  
             // Sort Users
+            // 
           }
         }
         pos++;
@@ -1264,6 +1285,8 @@ void FusedBB::getMetrics(vector<double> *data, Module *M){
   float time = 0;
   float num_ld = 0, num_st = 0;
   float power = 0;
+  float memreads = 0;
+  float memwrites = 0;
   pair<float,float> crit_path = getCriticalPathCost(BB);
   for(auto I = BB->begin(); I != BB->end() ; ++I){
     time += getSwDelay(&*I);
@@ -1271,10 +1294,14 @@ void FusedBB::getMetrics(vector<double> *data, Module *M){
       if(isa<StoreInst>(I)){
         footprint += DL.getTypeSizeInBits(I->getOperand(0)->getType());
         num_st++;
+          memwrites += DL.getTypeSizeInBits(
+            cast<StoreInst>(I)->getValueOperand()->getType());
       }
       else{
         footprint += DL.getTypeSizeInBits(I->getType());  
         num_ld++;
+        if(I->getType()->isSized())
+          memreads += DL.getTypeSizeInBits(I->getType());
       }
     }
     else if (isa<SelectInst>(I)){
@@ -1316,6 +1343,8 @@ void FusedBB::getMetrics(vector<double> *data, Module *M){
   data->push_back(cp/(area*power)/1e9); // Efficiency Gi/smm2W
   float eff_comp = useful/(crit_path.second*area*power)/1e9;
   //data->push_back(eff_comp);
+  data->push_back(memreads);
+  data->push_back(memwrites);
   return;
 }
 

@@ -1,5 +1,8 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
+export ARIANE_TOP=$DIR/ariane_core
+export RVBINUTILS_TOP=$DIR/riscv-binutils
+
 export LLVM_COMPILER_PATH=$DIR/llvm-project/build/bin
 export LLVM_COMPILER=clang
 

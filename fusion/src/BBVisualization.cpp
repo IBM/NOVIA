@@ -25,6 +25,10 @@ string rgb2hex(int r, int g, int b, bool with_head) {
 
 void drawBBGraph(BasicBlock *BB,char *file,string dir){
   struct stat buffer;
+  map<Instruction*,set<Instruction*> *> rawDeps;
+  map<Instruction*,set<Instruction*> *> warDeps;
+  memRAWDepAnalysis(BB, &rawDeps);
+  memWARDepAnalysis(BB, &warDeps);
 
   if(dir.empty()){
     errs() << "No visualization directory specified - assuming default\n";
@@ -50,7 +54,7 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir){
   // Add Nodes
   bool first = true;
   for(auto &I: *BB){
-    if(&I != BB->getTerminator()){
+    if(&I != BB->getTerminator() and !isa<IntrinsicInst>(&I)){
       name = string(I.getOpcodeName());
       if(names.count(name)){
         names[name]++;
@@ -77,7 +81,7 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir){
 
   // Add Edges
   for( auto &I : *BB ){
-    if(&I != BB->getTerminator()){
+    if(&I != BB->getTerminator() and !isa<IntrinsicInst>(&I)){
       for(int i = 0; i < I.getNumOperands();++i){
         Value *op = dyn_cast<Value>(I.getOperand(i));
         ConstantInt *cint = dyn_cast<ConstantInt>(I.getOperand(i));
@@ -91,6 +95,29 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir){
           m = agnode(G,(char*)to_string(valued).c_str(),1);
         }
         else{
+          // Raw Deps
+          if(rawDeps.count(&I)){
+            m = visited[cast<Value>(&I)];
+            for(auto *V: *rawDeps[&I]){
+              n = visited[cast<Value>(V)];
+              e = agedge(G,m,n,NULL,1);
+              agsafeset(e,(char*)"color",(char*)"blue",(char*)"");
+              agsafeset(e,(char*)"fillcolor",(char*)"blue",(char*)"");
+              agsafeset(e,(char*)"style",(char*)"dotted",(char*)"");
+
+
+            }
+          }
+          if(warDeps.count(&I)){
+            m = visited[cast<Value>(&I)];
+            for(auto *V: *warDeps[&I]){
+              n = visited[cast<Value>(V)];
+              e = agedge(G,m,n,NULL,1);
+              agsafeset(e,(char*)"color",(char*)"blue",(char*)"");
+              agsafeset(e,(char*)"fillcolor",(char*)"blue",(char*)"");
+              agsafeset(e,(char*)"style",(char*)"dotted",(char*)"");
+            }
+          }
           if(visited.count(op)){
             m = visited[op];
           }
@@ -175,6 +202,10 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
     vector<list<Instruction*> *> * subgraphs){
   struct stat buffer;
   BasicBlock *BB = fBB->getBB();
+  map<Instruction*,set<Instruction*> *> rawDeps;
+  map<Instruction*,set<Instruction*> *> warDeps;
+  memRAWDepAnalysis(fBB->getBB(), &rawDeps);
+  memWARDepAnalysis(fBB->getBB(), &warDeps);
 
   int max_merges = fBB->getMaxMerges();
   int col_steps = 10;
@@ -211,7 +242,7 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
   // Add Nodes
   bool first = true;
   for(auto &I: *BB){
-    if(&I != BB->getTerminator()){
+    if(&I != BB->getTerminator() and !isa<IntrinsicInst>(&I)){
       name = string(I.getOpcodeName());
       if(names.count(name)){
         names[name]++;
@@ -269,7 +300,7 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
 
   // Add Edges
   for( auto &I : *BB ){
-    if(&I != BB->getTerminator()){
+    if(&I != BB->getTerminator() and !isa<IntrinsicInst>(&I)){
       for(int i = 0; i < I.getNumOperands();++i){
         Value *op = dyn_cast<Value>(I.getOperand(i));
         ConstantInt *cint = dyn_cast<ConstantInt>(I.getOperand(i));
@@ -277,6 +308,23 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
           m = agnode(G,(char*)to_string(cint->getLimitedValue()).c_str(),1);
         }
         else{
+          // Raw Deps
+          if(rawDeps.count(&I)){
+            m = visited[cast<Value>(&I)];
+            for(auto *V: *rawDeps[&I]){
+              n = visited[cast<Value>(V)];
+              e = agedge(G,m,n,NULL,1);
+              agsafeset(e,(char*)"color",(char*)"blue",(char*)"");
+            }
+          }
+          if(warDeps.count(&I)){
+            m = visited[cast<Value>(&I)];
+            for(auto *V: *warDeps[&I]){
+              n = visited[cast<Value>(V)];
+              e = agedge(G,m,n,NULL,1);
+              agsafeset(e,(char*)"color",(char*)"blue",(char*)"");
+            }
+          }
           if(visited.count(op)){
             m = visited[op];
           }
