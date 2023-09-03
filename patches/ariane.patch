@@ -1,0 +1,1522 @@
+diff --git a/.travis.yml b/.travis.yml
+index f1cd330..3be08c4 100644
+--- a/.travis.yml
++++ b/.travis.yml
+@@ -71,27 +71,27 @@ jobs:
+       name: run riscv benchmarks (Write-Back Cache)
+       script:
+         - ci/build-riscv-tests.sh
+-        - make run-benchmarks-verilator defines=WB_DCACHE
++        - travis_wait 45 make run-benchmarks-verilator defines=WB_DCACHE
+ 
+     # asm tests
+     - stage: test
+       name: run asm tests (Write-Back Cache)
+       script:
+         - ci/build-riscv-tests.sh
+-        - make run-asm-tests-verilator defines=WB_DCACHE
++        - travis_wait 45 make run-asm-tests-verilator defines=WB_DCACHE
+ 
+     # rv64um-*-* tests
+     - stage: test
+       name: run mul tests (Write-Back Cache)
+       script:
+         - ci/build-riscv-tests.sh
+-        - make run-mul-verilator defines=WB_DCACHE
++        - travis_wait 45 make run-mul-verilator defines=WB_DCACHE
+ 
+     - stage: test
+       name: run fp tests (Write-Back Cache)
+       script:
+         - ci/build-riscv-tests.sh
+-        - make run-fp-verilator defines=WB_DCACHE
++        - travis_wait 30 make run-fp-verilator defines=WB_DCACHE
+ 
+     # amo tests
+     # rv64ua-v-* tests
+@@ -105,7 +105,7 @@ jobs:
+       name: run riscv benchmarks (Write-through Cache)
+       script:
+         - ci/build-riscv-tests.sh
+-        - make run-benchmarks-verilator  defines=WT_DCACHE
++        - travis_wait 45 make run-benchmarks-verilator  defines=WT_DCACHE
+ 
+     # asm tests
+     # rv64ui-v-* tests
+@@ -113,21 +113,21 @@ jobs:
+       name: run asm tests (Write-through Cache)
+       script:
+         - ci/build-riscv-tests.sh
+-        - make run-asm-tests-verilator defines=WT_DCACHE
++        - travis_wait 60 make run-asm-tests-verilator defines=WT_DCACHE
+ 
+     # rv64um-*-* tests
+     - stage: test
+       name: run mul tests (Write-through Cache)
+       script:
+         - ci/build-riscv-tests.sh
+-        - make run-mul-verilator defines=WT_DCACHE
++        - travis_wait 45 make run-mul-verilator defines=WT_DCACHE
+ 
+     # rv64ud-*-* tests
+     - stage: test
+       name: run fp tests (Write-through Cache)
+       script:
+         - ci/build-riscv-tests.sh
+-        - make run-fp-verilator defines=WT_DCACHE
++        - travis_wait 45 make run-fp-verilator defines=WT_DCACHE
+ 
+     # amo tests
+     # rv64ua-v-* tests
+@@ -135,7 +135,7 @@ jobs:
+       name: run amo tests (Write-through Cache)
+       script:
+         - ci/build-riscv-tests.sh
+-        - make run-amo-verilator defines=WT_DCACHE
++        - travis_wait 30 make run-amo-verilator defines=WT_DCACHE
+ 
+ # extra time during long builds
+ install: travis_wait
+diff --git a/Makefile b/Makefile
+index 4572870..8b566f4 100644
+--- a/Makefile
++++ b/Makefile
+@@ -92,7 +92,8 @@ ariane_pkg := include/riscv_pkg.sv                          \
+               tb/ariane_axi_soc_pkg.sv                      \
+               include/ariane_axi_pkg.sv                     \
+               src/fpu/src/fpnew_pkg.sv                      \
+-              src/fpu/src/fpu_div_sqrt_mvp/hdl/defs_div_sqrt_mvp.sv
++              src/fpu/src/fpu_div_sqrt_mvp/hdl/defs_div_sqrt_mvp.sv \
++							src/nfu/src/nfu_pkg.sv
+ ariane_pkg := $(addprefix $(root-dir), $(ariane_pkg))
+ 
+ # utility modules
+@@ -148,6 +149,8 @@ src :=  $(filter-out src/ariane_regfile.sv, $(wildcard src/*.sv))              \
+         $(filter-out src/fpu/src/fpnew_pkg.sv, $(wildcard src/fpu/src/*.sv))   \
+         $(filter-out src/fpu/src/fpu_div_sqrt_mvp/hdl/defs_div_sqrt_mvp.sv,    \
+         $(wildcard src/fpu/src/fpu_div_sqrt_mvp/hdl/*.sv))                     \
++        $(filter-out src/nfu/src/nfu_pkg.sv, $(wildcard src/nfu/src/*.sv))   	 \
++        $(filter-out blank.sv, $(wildcard src/nfu/src/accelerators/*.sv))   	 \
+         $(wildcard src/frontend/*.sv)                                          \
+         $(filter-out src/cache_subsystem/std_no_dcache.sv,                     \
+         $(wildcard src/cache_subsystem/*.sv))                                  \
+@@ -233,8 +236,8 @@ fpga_src := $(addprefix $(root-dir), $(fpga_src))
+ tbs := tb/ariane_tb.sv tb/ariane_testharness.sv
+ # RISCV asm tests and benchmark setup (used for CI)
+ # there is a definesd test-list with selected CI tests
+-riscv-test-dir            := tmp/riscv-tests/build/isa/
+-riscv-benchmarks-dir      := tmp/riscv-tests/build/benchmarks/
++riscv-test-dir            := /home/dtrilla/git/riscv-tools/riscv-tests/build/isa/
++riscv-benchmarks-dir      := /home/dtrilla/git/riscv-tools/riscv-tests/build/benchmarks/
+ riscv-asm-tests-list      := ci/riscv-asm-tests.list
+ riscv-amo-tests-list      := ci/riscv-amo-tests.list
+ riscv-mul-tests-list      := ci/riscv-mul-tests.list
+diff --git a/README.md b/README.md
+index 9659534..7dc28a3 100644
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,15 @@
+-[![Build Status](https://travis-ci.org/openhwgroup/cva6.svg?branch=master)](https://travis-ci.org/openhwgroup/cva6)
++[![Build Status](https://travis.ibm.com/NOVIA/ariane.svg?token=5Gz4ZkcRXojuPzsm6v4k&branch=master)](https://travis.ibm.com/NOVIA/ariane)
++
++# IBM
++
++Modified Ariane core to support NFU
++
++# NFU
++
++NFU Unit Stats:
++1. Single Accelerator (Add 2 operands)
++2. 3 input masks
++3. Single cycle operations
+ 
+ # CVA6 RISC-V CPU
+ 
+diff --git a/include/ariane_pkg.sv b/include/ariane_pkg.sv
+index f98a6d3..74ad92b 100644
+--- a/include/ariane_pkg.sv
++++ b/include/ariane_pkg.sv
+@@ -53,6 +53,7 @@ package ariane_pkg;
+       //
+       logic [63:0]                      DmBaseAddress;         // offset of the debug module
+       int unsigned                      NrPMPEntries;          // Number of PMP entries
++      bit                               NFU_PRESENT;           // Generate NFU
+     } ariane_cfg_t;
+ 
+     localparam ariane_cfg_t ArianeDefaultConfig = '{
+@@ -76,7 +77,9 @@ package ariane_pkg;
+       SwapEndianess:          1'b0,
+       // debug
+       DmBaseAddress:          64'h0,
+-      NrPMPEntries:           8
++      NrPMPEntries:           8,
++      // NFU
++      NFU_PRESENT:            1
+     };
+ 
+     // Function being called to check parameters
+@@ -186,7 +189,7 @@ package ariane_pkg;
+     // --------------------------------------
+     // vvvv Don't change these by hand! vvvv
+     localparam bit FP_PRESENT = RVF | RVD | XF16 | XF16ALT | XF8;
+-
++    
+     // Length of widest floating-point format
+     localparam FLEN    = RVD     ? 64 : // D ext.
+                          RVF     ? 32 : // F ext.
+@@ -357,7 +360,8 @@ package ariane_pkg;
+         MULT,      // 5
+         CSR,       // 6
+         FPU,       // 7
+-        FPU_VEC    // 8
++        FPU_VEC,   // 8
++        NFU        // 9
+     } fu_t;
+ 
+     localparam EXC_OFF_RST      = 8'h80;
+@@ -468,7 +472,9 @@ package ariane_pkg;
+                                // Floating-Point Classify Instruction
+                                FCLASS,
+                                // Vectorial Floating-Point Instructions that don't directly map onto the scalar ones
+-                               VFMIN, VFMAX, VFSGNJ, VFSGNJN, VFSGNJX, VFEQ, VFNE, VFLT, VFGE, VFLE, VFGT, VFCPKAB_S, VFCPKCD_S, VFCPKAB_D, VFCPKCD_D
++                               VFMIN, VFMAX, VFSGNJ, VFSGNJN, VFSGNJX, VFEQ, VFNE, VFLT, VFGE, VFLE, VFGT, VFCPKAB_S, VFCPKCD_S, VFCPKAB_D, VFCPKCD_D,
++                               // NFU Operations
++                               SET_LOAD_NFU, EXEC_NFU, POP_NFU
+                              } fu_op;
+ 
+     typedef struct packed {
+diff --git a/include/riscv_pkg.sv b/include/riscv_pkg.sv
+index 10ddf80..b2fb780 100644
+--- a/include/riscv_pkg.sv
++++ b/include/riscv_pkg.sv
+@@ -133,6 +133,16 @@ package riscv;
+         logic [6:0]   opcode;
+     } rftype_t; // floating-point
+ 
++    typedef struct packed {
++        logic [31:30] reserved;
++        logic [29:25] mask2;
++        logic [24:20] mask1;
++        logic [19:15] rd;
++        logic [14:10] nfu;
++        logic [9:7]  funct3;
++        logic [6:0]   opcode;
++    } nfutype_t; // nfu 
++
+     typedef struct packed {
+         logic [31:30] funct2;
+         logic [29:25] vecfltop;
+@@ -189,6 +199,7 @@ package riscv;
+         stype_t        stype;
+         utype_t        utype;
+         atype_t        atype;
++        nfutype_t      nfutype;
+     } instruction_t;
+ 
+     // --------------------
+@@ -218,7 +229,8 @@ package riscv;
+     localparam OpcodeNmadd     = 7'b10_011_11;
+     localparam OpcodeOpFp      = 7'b10_100_11;
+     localparam OpcodeRsrvd1    = 7'b10_101_11;
+-    localparam OpcodeCustom2   = 7'b10_110_11;
++    //localparam OpcodeCustom2   = 7'b10_110_11;
++    localparam OpcodeOpNfu     = 7'b10_110_11;
+     // Quadrant 3
+     localparam OpcodeBranch    = 7'b11_000_11;
+     localparam OpcodeJalr      = 7'b11_001_11;
+diff --git a/src/ariane.sv b/src/ariane.sv
+index 5668e60..561a86b 100644
+--- a/src/ariane.sv
++++ b/src/ariane.sv
+@@ -130,6 +130,8 @@ module ariane import ariane_pkg::*; #(
+   riscv::xlen_t             fpu_result_ex_id;
+   logic                     fpu_valid_ex_id;
+   exception_t               fpu_exception_ex_id;
++  // NFU
++  logic                     nfu_valid_id_ex;
+   // CSR
+   logic                     csr_valid_id_ex;
+   // --------------
+@@ -265,7 +267,10 @@ module ariane import ariane_pkg::*; #(
+   // ---------
+   // ID
+   // ---------
+-  id_stage id_stage_i (
++    id_stage #(
++    .ArianeCfg ( ArianeCfg )
++  ) id_stage_i 
++  (
+     .clk_i,
+     .rst_ni,
+     .flush_i                    ( flush_ctrl_if              ),
+@@ -333,6 +338,8 @@ module ariane import ariane_pkg::*; #(
+     .fpu_valid_o                ( fpu_valid_id_ex              ),
+     .fpu_fmt_o                  ( fpu_fmt_id_ex                ),
+     .fpu_rm_o                   ( fpu_rm_id_ex                 ),
++    // NFU
++    .nfu_valid_o                ( nfu_valid_id_ex              ),
+     // CSR
+     .csr_valid_o                ( csr_valid_id_ex              ),
+     // Commit
+@@ -418,6 +425,11 @@ module ariane import ariane_pkg::*; #(
+     .amo_valid_commit_i     ( amo_valid_commit            ),
+     .amo_req_o              ( amo_req                     ),
+     .amo_resp_i             ( amo_resp                    ),
++    // NFU
++    .nfu_valid_i            ( nfu_valid_id_ex             ),
++    .nfu_commit_bypass_i    ( commit_instr_id_commit      ),
++    .commit_ack_i           ( commit_ack                  ),
++
+     // Performance counters
+     .itlb_miss_o            ( itlb_miss_ex_perf           ),
+     .dtlb_miss_o            ( dtlb_miss_ex_perf           ),
+@@ -452,7 +464,8 @@ module ariane import ariane_pkg::*; #(
+   assign no_st_pending_commit = no_st_pending_ex & dcache_commit_wbuffer_empty;
+ 
+   commit_stage #(
+-    .NR_COMMIT_PORTS ( NR_COMMIT_PORTS )
++    .NR_COMMIT_PORTS ( NR_COMMIT_PORTS ),
++    .ArianeCfg  ( ArianeCfg  )
+   ) commit_stage_i (
+     .clk_i,
+     .rst_ni,
+diff --git a/src/commit_stage.sv b/src/commit_stage.sv
+index 42e65b8..7233cbd 100644
+--- a/src/commit_stage.sv
++++ b/src/commit_stage.sv
+@@ -14,7 +14,8 @@
+ 
+ 
+ module commit_stage import ariane_pkg::*; #(
+-    parameter int unsigned NR_COMMIT_PORTS = 2
++    parameter int unsigned NR_COMMIT_PORTS = 2,
++    parameter ariane_pkg::ariane_cfg_t ArianeCfg = ariane_pkg::ArianeDefaultConfig
+ )(
+     input  logic                                    clk_i,
+     input  logic                                    rst_ni,
+@@ -143,6 +144,15 @@ module commit_stage import ariane_pkg::*; #(
+                 csr_write_fflags_o = 1'b1;
+                 commit_ack_o[0] = 1'b1;
+             end
++            // --------
++            // NFU Flags
++            // --------
++            if (ArianeCfg.NFU_PRESENT && commit_instr_i[0].fu == NFU) begin
++              case(commit_instr_i[0].op)
++                POP_NFU: we_gpr_o[0] = 1'b1;
++                default: we_gpr_o[0] = 1'b0;
++              endcase
++            end
+             // ---------
+             // CSR Logic
+             // ---------
+@@ -223,7 +233,7 @@ module commit_stage import ariane_pkg::*; #(
+                 // only if the first instruction didn't throw an exception and this instruction won't throw an exception
+                 // and the functional unit is of type ALU, LOAD, CTRL_FLOW, MULT, FPU or FPU_VEC
+                 if (!exception_o.valid && !commit_instr_i[1].ex.valid
+-                                       && (commit_instr_i[1].fu inside {ALU, LOAD, CTRL_FLOW, MULT, FPU, FPU_VEC})) begin
++                                       && (commit_instr_i[1].fu inside {ALU, LOAD, CTRL_FLOW, MULT, FPU, FPU_VEC, NFU})) begin
+ 
+                     if (is_rd_fpr(commit_instr_i[1].op))
+                         we_fpr_o[1] = 1'b1;
+@@ -232,6 +242,13 @@ module commit_stage import ariane_pkg::*; #(
+ 
+                     commit_ack_o[1] = 1'b1;
+ 
++                    if (ArianeCfg.NFU_PRESENT && commit_instr_i[1].fu == NFU) begin
++                      case(commit_instr_i[1].op)
++                        POP_NFU: we_gpr_o[1] = 1'b1;
++                        default: we_gpr_o[1] = 1'b0;
++                      endcase
++                    end
++
+                     // additionally check if we are retiring an FPU instruction because we need to make sure that we write all
+                     // exception flags
+                     if (commit_instr_i[1].fu inside {FPU, FPU_VEC}) begin
+diff --git a/src/decoder.sv b/src/decoder.sv
+index e0c551e..e444594 100644
+--- a/src/decoder.sv
++++ b/src/decoder.sv
+@@ -19,7 +19,9 @@
+ //              This also includes all the forwarding logic
+ //
+ 
+-module decoder import ariane_pkg::*; (
++module decoder import ariane_pkg::*; # (  
++    parameter ariane_pkg::ariane_cfg_t ArianeCfg     = ariane_pkg::ArianeDefaultConfig
++) (
+     input  logic               debug_req_i,             // external debug request
+     input  logic [riscv::VLEN-1:0] pc_i,                // PC from IF
+     input  logic               is_compressed_i,         // is a compressed instruction
+@@ -54,7 +56,7 @@ module decoder import ariane_pkg::*; (
+     // Immediate select
+     // --------------------
+     enum logic[3:0] {
+-        NOIMM, IIMM, SIMM, SBIMM, UIMM, JIMM, RS3
++        NOIMM, IIMM, SIMM, SBIMM, UIMM, JIMM, RS3, NFUIMM
+     } imm_select;
+ 
+     riscv::xlen_t imm_i_type;
+@@ -63,6 +65,7 @@ module decoder import ariane_pkg::*; (
+     riscv::xlen_t imm_u_type;
+     riscv::xlen_t imm_uj_type;
+     riscv::xlen_t imm_bi_type;
++    riscv::xlen_t imm_nfu_type;
+ 
+     always_comb begin : decoder
+ 
+@@ -1003,6 +1006,29 @@ module decoder import ariane_pkg::*; (
+                     instruction_o.rd[4:0] = instr.utype.rd;
+                 end
+ 
++                riscv::OpcodeOpNfu:  begin
++                    if (ArianeCfg.NFU_PRESENT) begin 
++                      instruction_o.fu      = NFU;
++                      imm_select           = NFUIMM;
++                      case (instr.nfutype.funct3)
++                        3'b000: begin 
++                          instruction_o.op     = ariane_pkg::SET_LOAD_NFU;
++                          instruction_o.use_pc = 1'b1;
++                          end
++                        3'b001: begin 
++                          instruction_o.op     = ariane_pkg::EXEC_NFU;
++                          end
++                        3'b010: begin
++                          instruction_o.op = ariane_pkg::POP_NFU;
++                          instruction_o.rd = instr.nfutype.rd;
++                          end
++                        default: illegal_instr = 1'b1; 
++                      endcase
++                    end else begin
++                      illegal_instr = 1'b1;
++                    end
++                end
++
+                 default: illegal_instr = 1'b1;
+             endcase
+         end
+@@ -1018,8 +1044,9 @@ module decoder import ariane_pkg::*; (
+         imm_u_type  = { {riscv::XLEN-32{instruction_i[31]}}, instruction_i[31:12], 12'b0 }; // JAL, AUIPC, sign extended to 64 bit
+         imm_uj_type = { {riscv::XLEN-20{instruction_i[31]}}, instruction_i[19:12], instruction_i[20], instruction_i[30:21], 1'b0 };
+         imm_bi_type = { {riscv::XLEN-5{instruction_i[24]}}, instruction_i[24:20] };
++        imm_nfu_type = { {riscv::XLEN-20{1'b0}}, {instr.nfutype.mask2, instr.nfutype.mask1, instr.nfutype.rd, instr.nfutype.nfu} };
+ 
+-        // NOIMM, IIMM, SIMM, BIMM, UIMM, JIMM, RS3
++        // NOIMM, IIMM, SIMM, BIMM, UIMM, JIMM, RS3, NFUIMM
+         // select immediate
+         case (imm_select)
+             IIMM: begin
+@@ -1047,6 +1074,11 @@ module decoder import ariane_pkg::*; (
+                 instruction_o.result = {{riscv::XLEN-5{1'b0}}, instr.r4type.rs3};
+                 instruction_o.use_imm = 1'b0;
+             end
++            NFUIMM: begin
++                // We use result to store the masked instructions
++                instruction_o.result = imm_nfu_type;
++                instruction_o.use_imm = 1'b1;
++            end
+             default: begin
+                 instruction_o.result = {riscv::XLEN{1'b0}};
+                 instruction_o.use_imm = 1'b0;
+diff --git a/src/ex_stage.sv b/src/ex_stage.sv
+index 989476d..b331efa 100644
+--- a/src/ex_stage.sv
++++ b/src/ex_stage.sv
+@@ -78,6 +78,10 @@ module ex_stage import ariane_pkg::*; #(
+     output riscv::xlen_t                           fpu_result_o,
+     output logic                                   fpu_valid_o,
+     output exception_t                             fpu_exception_o,
++    // NFU
++    input logic                                    nfu_valid_i,
++    input scoreboard_entry_t [NR_COMMIT_PORTS-1:0] nfu_commit_bypass_i,
++    input logic [NR_COMMIT_PORTS-1:0]              commit_ack_i,
+     // Memory Management
+     input  logic                                   enable_translation_i,
+     input  logic                                   en_ld_st_translation_i,
+@@ -127,6 +131,7 @@ module ex_stage import ariane_pkg::*; #(
+     //                        output port. Divisions are arbitrary in length
+     //                        they will simply block the issue of all other
+     //                        instructions.
++    // 5. NFU
+ 
+ 
+     logic current_instruction_is_sfence_vma;
+@@ -137,9 +142,9 @@ module ex_stage import ariane_pkg::*; #(
+ 
+     // from ALU to branch unit
+     logic alu_branch_res; // branch comparison result
+-    riscv::xlen_t alu_result, csr_result, mult_result;
++    riscv::xlen_t alu_result, csr_result, mult_result, nfu_result;
+     logic [riscv::VLEN-1:0] branch_result;
+-    logic csr_ready, mult_ready;
++    logic csr_ready, mult_ready, nfu_ready;
+     logic [TRANS_ID_BITS-1:0] mult_trans_id;
+     logic mult_valid;
+ 
+@@ -167,7 +172,7 @@ module ex_stage import ariane_pkg::*; #(
+         .pc_i,
+         .is_compressed_instr_i,
+         // any functional unit is valid, check that there is no accidental mis-predict
+-        .fu_valid_i ( alu_valid_i || lsu_valid_i || csr_valid_i || mult_valid_i || fpu_valid_i ) ,
++        .fu_valid_i ( alu_valid_i || lsu_valid_i || csr_valid_i || mult_valid_i || fpu_valid_i || nfu_valid_i ) ,
+         .branch_valid_i,
+         .branch_comp_res_i ( alu_branch_res ),
+         .branch_result_o   ( branch_result ),
+@@ -190,7 +195,7 @@ module ex_stage import ariane_pkg::*; #(
+         .csr_addr_o
+     );
+ 
+-    assign flu_valid_o = alu_valid_i | branch_valid_i | csr_valid_i | mult_valid;
++    assign flu_valid_o = alu_valid_i | branch_valid_i | csr_valid_i | mult_valid | nfu_valid_i;
+ 
+     // result MUX
+     always_comb begin
+@@ -206,12 +211,15 @@ module ex_stage import ariane_pkg::*; #(
+         end else if (mult_valid) begin
+             flu_result_o = mult_result;
+             flu_trans_id_o = mult_trans_id;
+-        end
++        // NFU result
++        end else if (nfu_valid_i) begin
++            flu_result_o = nfu_result;
++       end
+     end
+ 
+     // ready flags for FLU
+     always_comb begin
+-        flu_ready_o = csr_ready & mult_ready;
++        flu_ready_o = csr_ready & mult_ready & nfu_ready;
+     end
+ 
+     // 4. Multiplication (Sequential)
+@@ -264,6 +272,31 @@ module ex_stage import ariane_pkg::*; #(
+         end
+     endgenerate
+ 
++    // ----------------
++    // NFU
++    // ----------------
++    generate
++      if (ArianeCfg.NFU_PRESENT) begin : nfu_gen
++          fu_data_t nfu_data;
++          assign nfu_data = nfu_valid_i ? fu_data_i : '0;
++
++          nfu_wrap nfu_i (
++              .clk_i,
++              .rst_ni,
++              .fu_data_i ( nfu_data ),
++              .commit_instr_i ( nfu_commit_bypass_i ),
++              .commit_ack_i,
++              .nfu_valid_i,
++              .nfu_ready_o ( nfu_ready ),
++              .nfu_result_o ( nfu_result )
++            );
++      end else begin : no_nfu_gen
++        assign nfu_result     = '0;
++        assign nfu_ready      = '1;
++      end
++    endgenerate
++
++
+     // ----------------
+     // Load-Store Unit
+     // ----------------
+diff --git a/src/id_stage.sv b/src/id_stage.sv
+index 9d66104..8eb50fc 100644
+--- a/src/id_stage.sv
++++ b/src/id_stage.sv
+@@ -13,7 +13,9 @@
+ // Description: Instruction decode, contains the logic for decode,
+ //              issue and read operands.
+ 
+-module id_stage (
++module id_stage # (
++    parameter ariane_pkg::ariane_cfg_t ArianeCfg     = ariane_pkg::ArianeDefaultConfig
++) (
+     input  logic                          clk_i,
+     input  logic                          rst_ni,
+ 
+@@ -65,7 +67,9 @@ module id_stage (
+     // ---------------------------------------------------------
+     // 2. Decode and emit instruction to issue stage
+     // ---------------------------------------------------------
+-    decoder decoder_i (
++    decoder #(
++        .ArianeCfg ( ArianeCfg )
++    ) decoder_i (
+         .debug_req_i,
+         .irq_ctrl_i,
+         .irq_i,
+diff --git a/src/issue_read_operands.sv b/src/issue_read_operands.sv
+index f5da02d..0d84a0c 100644
+--- a/src/issue_read_operands.sv
++++ b/src/issue_read_operands.sv
+@@ -60,6 +60,8 @@ module issue_read_operands import ariane_pkg::*; #(
+     output logic                                   fpu_valid_o,      // Output is valid
+     output logic [1:0]                             fpu_fmt_o,        // FP fmt field from instr.
+     output logic [2:0]                             fpu_rm_o,         // FP rm field from instr.
++    // NFU
++    output logic                                   nfu_valid_o,     // NFU Output is valid
+     // CSR
+     output logic                                   csr_valid_o,      // Output is valid
+     // commit port
+@@ -89,6 +91,7 @@ module issue_read_operands import ariane_pkg::*; #(
+     logic          lsu_valid_q;
+     logic          csr_valid_q;
+     logic       branch_valid_q;
++    logic          nfu_valid_q;
+ 
+     logic [TRANS_ID_BITS-1:0] trans_id_n, trans_id_q;
+     fu_op operator_n, operator_q; // operation to perform
+@@ -120,6 +123,7 @@ module issue_read_operands import ariane_pkg::*; #(
+     assign fpu_valid_o         = fpu_valid_q;
+     assign fpu_fmt_o           = fpu_fmt_q;
+     assign fpu_rm_o            = fpu_rm_q;
++    assign nfu_valid_o         = nfu_valid_q;
+     // ---------------
+     // Issue Stage
+     // ---------------
+@@ -130,7 +134,7 @@ module issue_read_operands import ariane_pkg::*; #(
+         unique case (issue_instr_i.fu)
+             NONE:
+                 fu_busy = 1'b0;
+-            ALU, CTRL_FLOW, CSR, MULT:
++            ALU, CTRL_FLOW, CSR, MULT, NFU:
+                 fu_busy = ~flu_ready_i;
+             FPU, FPU_VEC:
+                 fu_busy = ~fpu_ready_i;
+@@ -246,6 +250,7 @@ module issue_read_operands import ariane_pkg::*; #(
+         fpu_rm_q       <= 3'b0;
+         csr_valid_q    <= 1'b0;
+         branch_valid_q <= 1'b0;
++        nfu_valid_q    <= 1'b0;
+       end else begin
+         alu_valid_q    <= 1'b0;
+         lsu_valid_q    <= 1'b0;
+@@ -255,6 +260,7 @@ module issue_read_operands import ariane_pkg::*; #(
+         fpu_rm_q       <= 3'b0;
+         csr_valid_q    <= 1'b0;
+         branch_valid_q <= 1'b0;
++        nfu_valid_q    <= 1'b0;
+         // Exception pass through:
+         // If an exception has occurred simply pass it through
+         // we do not want to issue this instruction
+@@ -280,6 +286,8 @@ module issue_read_operands import ariane_pkg::*; #(
+                     lsu_valid_q    <= 1'b1;
+                 CSR:
+                     csr_valid_q    <= 1'b1;
++                NFU:
++                    nfu_valid_q    <= 1'b1;
+                 default:;
+             endcase
+         end
+@@ -292,6 +300,7 @@ module issue_read_operands import ariane_pkg::*; #(
+             fpu_valid_q    <= 1'b0;
+             csr_valid_q    <= 1'b0;
+             branch_valid_q <= 1'b0;
++            nfu_valid_q    <= 1'b0;
+         end
+       end
+     end
+diff --git a/src/issue_stage.sv b/src/issue_stage.sv
+index 2258eb6..bdcb0b3 100644
+--- a/src/issue_stage.sv
++++ b/src/issue_stage.sv
+@@ -53,6 +53,8 @@ module issue_stage import ariane_pkg::*; #(
+     output logic                                     fpu_valid_o,
+     output logic [1:0]                               fpu_fmt_o,        // FP fmt field from instr.
+     output logic [2:0]                               fpu_rm_o,         // FP rm field from instr.
++    //NFU
++    output logic                                     nfu_valid_o,
+ 
+     output logic                                     csr_valid_o,
+ 
+diff --git a/src/nfu/LICENSE b/src/nfu/LICENSE
+new file mode 100644
+index 0000000..8f4e07f
+--- /dev/null
++++ b/src/nfu/LICENSE
+@@ -0,0 +1 @@
++TODO: IBM LICENSE FILE
+diff --git a/src/nfu/README.md b/src/nfu/README.md
+new file mode 100644
+index 0000000..98d8411
+--- /dev/null
++++ b/src/nfu/README.md
+@@ -0,0 +1,20 @@
++# NFU - NOVIA Functional Unit
++
++TODO: Breif description
++From the FPU Readme
++
++Maintainer: David Trilla <david.trilla@ibm.com>
++## Features
++
++No support for compressed instructions (Compile programs with -march=rv64g) [No c extension]
++### Operations
++### Status Flags
++## Getting Started
++### Dependencies
++### Usage
++#### Example Instantiation
++### Documentation
++### Issues and Contributing
++### Repository Structure
++## Licensing
++## Acknowledgement
+diff --git a/src/nfu/nfu_select.dat b/src/nfu/nfu_select.dat
+new file mode 100644
+index 0000000..457b59c
+--- /dev/null
++++ b/src/nfu/nfu_select.dat
+@@ -0,0 +1,16 @@
++8000000000000000
++0000000000000000
++4000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
++0000000000000000
+diff --git a/src/nfu/src/accelerators/blank.sv b/src/nfu/src/accelerators/blank.sv
+new file mode 100644
+index 0000000..dd6858e
+--- /dev/null
++++ b/src/nfu/src/accelerators/blank.sv
+@@ -0,0 +1,20 @@
++// TODO: Find the right disclaimer
++//
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 28.07.2021
++// Description: 
++
++module blank #(
++)( 
++  // Input signals
++  input logic [OPWIDTH-1:0][WIDTH-1:0] data_i,
++  // Input handshake
++  // Output signals
++  output logic [OPWIDTH-1:0][WIDTH-1:0] data_o
++  // Output handshake
++);
++
++
++endmodule
+diff --git a/src/nfu/src/accelerators/fft_inline.sv b/src/nfu/src/accelerators/fft_inline.sv
+new file mode 100644
+index 0000000..a770a25
+--- /dev/null
++++ b/src/nfu/src/accelerators/fft_inline.sv
+@@ -0,0 +1,60 @@
++// TODO: Find the right disclaimer
++//
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 28.07.2021
++// Description: 
++
++module fft_inline #(
++  parameter nfu_pkg::nfu_features_t         Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned WIDTH      = Features.Width,
++  localparam int unsigned CONFIG_SELECTS     = Features.ConfigSelects,
++  localparam int unsigned NOPERANDS  = 2**Features.OpWidth
++)( 
++  // Input signals
++  input logic [NOPERANDS-1:0][WIDTH-1:0] data_i,
++  input logic [CONFIG_SELECTS-1:0]       select_i,
++  // Input handshake
++  // Output signals
++  output logic [NOPERANDS-1:0][WIDTH-1:0] data_o
++  // Output handshake
++);
++  logic [WIDTH-1:0] a,b,c,d,e,f,g,h,j,l,m,n;
++  logic [7:0] i,k,o,p;
++  //Inputs
++  assign a = data_i[0];
++  assign b = data_i[1];
++  assign c = data_i[2];
++  assign d = data_i[3];
++
++  //Accelerator
++  assign e = a << 9;
++  assign f = b << 1;
++  assign g = c << 9;
++  assign h = d << 1;
++
++  assign i = f[7:0];
++  assign j = e|f;
++  assign k = h[7:0];
++  assign l = g|h;
++
++  assign m = j >> 8;
++  assign n = l >> 8;
++
++  assign o = m[7:0];
++  assign p = n[7:0];
++
++  assign data_o[0] = i;
++  assign data_o[1] = p;
++  assign data_o[2] = o;
++  assign data_o[3] = k;
++
++  assign data_o[4] = data_i[0];
++  assign data_o[5] = data_i[1];
++  assign data_o[6] = data_i[2];
++  assign data_o[7] = data_i[3];
++
++
++endmodule
+diff --git a/src/nfu/src/accelerators/fftfmcw_inline.sv b/src/nfu/src/accelerators/fftfmcw_inline.sv
+new file mode 100644
+index 0000000..2d18e82
+--- /dev/null
++++ b/src/nfu/src/accelerators/fftfmcw_inline.sv
+@@ -0,0 +1,60 @@
++// TODO: Find the right disclaimer
++//
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 28.07.2021
++// Description: 
++
++module fftfmcw_inline #(
++  parameter nfu_pkg::nfu_features_t         Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned WIDTH      = Features.Width,
++  localparam int unsigned CONFIG_SELECTS     = Features.ConfigSelects,
++  localparam int unsigned NOPERANDS  = 2**Features.OpWidth
++)( 
++  // Input signals
++  input logic [NOPERANDS-1:0][WIDTH-1:0] data_i,
++  input logic [CONFIG_SELECTS-1:0]       select_i,
++  // Input handshake
++  // Output signals
++  output logic [NOPERANDS-1:0][WIDTH-1:0] data_o
++  // Output handshake
++);
++  //Inputs
++  logic [WIDTH-1:0] a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u;
++  //Accelerator
++  assign a = data_i[0] + data_i[1];
++  assign b = {32'b0,{32{1'b1}}} & data_i[2];
++  assign c = data_i[2] + 1;
++  assign d = data_i[0] + data_i[3];
++  assign e = c == data_i[4];
++  assign f = select_i[0] ? b : d;
++  assign g = d + data_i[5];
++  assign h = select_i[1] ? d : a;
++  assign i = f << 1;
++  assign j = g << 1;
++  assign k = h < data_i[6];
++  assign l = {32'b0,i[31:0]};
++  assign m = i | 1'b1;
++  assign n = {32'b0,j[31:0]};
++  assign o = j | 1'b1;
++  assign p = data_i[7] + l*32;
++  assign q = {32'b0,m[31:0]};
++  assign r = data_i[7] + n*32;
++  assign s = {32'b0,o[31:0]};
++  assign t = data_i[7] + q*32;
++  assign u = data_i[7] + s*32;
++  //Ouputs
++  assign data_o[0] = p;
++  assign data_o[1] = u;
++  assign data_o[2] = t;
++  assign data_o[3] = r;
++  assign data_o[4] = b;
++  assign data_o[5] = a;
++  assign data_o[6] = d;
++  assign data_o[7] = c;
++  assign data_o[8] = e;
++  assign data_o[9] = k;
++
++endmodule
+diff --git a/src/nfu/src/accelerators/popcount_inline.sv b/src/nfu/src/accelerators/popcount_inline.sv
+new file mode 100644
+index 0000000..55396da
+--- /dev/null
++++ b/src/nfu/src/accelerators/popcount_inline.sv
+@@ -0,0 +1,45 @@
++// TODO: Find the right disclaimer
++//
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 28.07.2021
++// Description: 
++
++module popcount_inline #(
++  parameter nfu_pkg::nfu_features_t         Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned WIDTH      = Features.Width,
++  localparam int unsigned CONFIG_SELECTS     = Features.ConfigSelects,
++  localparam int unsigned NOPERANDS  = 2**Features.OpWidth
++)( 
++  // Input signals
++  input logic [NOPERANDS-1:0][WIDTH-1:0] data_i,
++  input logic [CONFIG_SELECTS-1:0]       select_i,
++  // Input handshake
++  // Output signals
++  output logic [NOPERANDS-1:0][WIDTH-1:0] data_o
++  // Output handshake
++);
++  logic [WIDTH-1:0] a,b,c,d,e,f;
++
++  assign a = data_i[0] - ((data_i[0] >> 1) & 64'h5555_5555_5555_5555);
++  assign b = (a & 64'h3333_3333_3333_3333) +  ((a >> 2) & 64'h3333_3333_3333_3333);
++  assign c = (b + (b >> 4)) & 64'h0F0F_0F0F_0F0F_0F0F;
++  assign d = c + (c >> 8);
++  assign e = d + (d >> 16);
++  assign f = e + (e >> 32);
++  assign data_o[0] = f & 64'h0000_0000_0000_007F;
++
++
++  assign data_o[1] = data_i[0];
++  assign data_o[2] = data_i[1];
++  assign data_o[3] = data_i[2];
++  assign data_o[4] = data_i[3];
++  assign data_o[5] = data_i[4];
++  assign data_o[6] = data_i[5];
++
++
++
++
++endmodule
+diff --git a/src/nfu/src/accelerators/viterbi_inline.sv b/src/nfu/src/accelerators/viterbi_inline.sv
+new file mode 100644
+index 0000000..cf18bfe
+--- /dev/null
++++ b/src/nfu/src/accelerators/viterbi_inline.sv
+@@ -0,0 +1,30 @@
++// TODO: Find the right disclaimer
++//
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 28.07.2021
++// Description: 
++
++module viterbi_inline #(
++  parameter nfu_pkg::nfu_features_t         Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned WIDTH      = Features.Width,
++  localparam int unsigned CONFIG_SELECTS     = Features.ConfigSelects,
++  localparam int unsigned NOPERANDS  = 2**Features.OpWidth
++)( 
++  // Input signals
++  input logic [NOPERANDS-1:0][WIDTH-1:0] data_i,
++  input logic [CONFIG_SELECTS-1:0]       select_i,
++  // Input handshake
++  // Output signals
++  output logic [NOPERANDS-1:0][WIDTH-1:0] data_o
++  // Output handshake
++);
++  assign data_o[0] = ((data_i[0] ^ {64{1'b1}}) & data_i[2]) | (data_i[0] & data_i[1]);
++
++  assign data_o[1] = data_i[0];
++  assign data_o[2] = data_i[1];
++  assign data_o[3] = data_i[2];
++
++endmodule
+diff --git a/src/nfu/src/nfu_acc.sv b/src/nfu/src/nfu_acc.sv
+new file mode 100644
+index 0000000..ba50603
+--- /dev/null
++++ b/src/nfu/src/nfu_acc.sv
+@@ -0,0 +1,66 @@
++// TODO: Find the right disclaimer
++//
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 02.05.2021
++// Description: NOVIA accelerators wrapper NFU
++
++module nfu_acc #(
++  // NFU configuration
++  parameter nfu_pkg::nfu_features_t         Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned WIDTH      = Features.Width,
++  localparam int unsigned ACCS       = Features.Accelerators,
++  localparam int unsigned NOPERANDS  = 2**Features.OpWidth,
++  localparam int unsigned CONFIG_SELECTS     = Features.ConfigSelects
++)( 
++  // Input signals
++  input logic [NOPERANDS-1:0][WIDTH-1:0]  data_i,
++  input logic [ACCS-1:0]                  acc_i,
++  input logic [CONFIG_SELECTS-1:0]        select_i,
++  // Input handshake
++  // Output signals
++  output logic [NOPERANDS-1:0][WIDTH-1:0] data_o
++  // Output handshake
++);
++
++  logic [ACCS-1:0][NOPERANDS-1:0][WIDTH-1:0] result;
++  // Accelerators
++  nfu_acc_wrap #(
++    .CONFIG(1)
++  ) acc_0 (
++    .data_i,
++    .select_i,
++    .data_o(result[0])
++  );
++
++  nfu_acc_wrap #(
++    .CONFIG(2)
++  ) acc_1 (
++    .data_i,
++    .select_i,
++    .data_o(result[1])
++  );
++  
++  nfu_acc_wrap #(
++    .CONFIG(3)
++  ) acc_2 (
++    .data_i,
++    .select_i,
++    .data_o(result[2])
++  );
++  
++  nfu_acc_wrap #(
++    .CONFIG(4)
++  ) acc_3 (
++    .data_i,
++    .select_i,
++    .data_o(result[3])
++  );
++  
++  
++  // Output Select
++  assign data_o = result[acc_i];
++
++endmodule
+diff --git a/src/nfu/src/nfu_acc_wrap.sv b/src/nfu/src/nfu_acc_wrap.sv
+new file mode 100644
+index 0000000..740ea31
+--- /dev/null
++++ b/src/nfu/src/nfu_acc_wrap.sv
+@@ -0,0 +1,57 @@
++// TODO: Find the right disclaimer
++//
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 28.07.2021
++// Description: NOVIA accelerators wrapper NFU
++
++module nfu_acc_wrap #(
++  parameter int unsigned CONFIG         = 0,
++  // NFU configuration
++  parameter nfu_pkg::nfu_features_t    Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned WIDTH        = Features.Width,
++  localparam int unsigned NOPERANDS    = 2**Features.OpWidth,
++  localparam int unsigned CONFIG_SELECTS     = Features.ConfigSelects
++)( 
++  // Input signals
++  input logic [NOPERANDS-1:0][WIDTH-1:0] data_i,
++  input logic [CONFIG_SELECTS-1:0]       select_i,
++  // Input handshake
++  // Output signals
++  output logic [NOPERANDS-1:0][WIDTH-1:0] data_o
++  // Output handshake
++);
++  
++
++  generate
++    if (CONFIG == 1) begin : acc_0_gen
++      fftfmcw_inline fftfmcw_inline0 (
++        .data_i,
++        .select_i,
++        .data_o
++      );
++    end else if(CONFIG == 2) begin : acc_1_gen
++      viterbi_inline viterbi_inline1 (
++        .data_i,
++        .select_i,
++        .data_o
++      );
++    end else if(CONFIG == 3) begin : acc_0_gen
++      fft_inline fft_inline2 (
++        .data_i,
++        .select_i,
++        .data_o
++      );
++    end else if(CONFIG == 4) begin : acc_2_gen
++      popcount_inline popcount_inline3 (
++        .data_i,
++        .select_i,
++        .data_o
++      );
++    end
++  endgenerate
++
++
++endmodule
+diff --git a/src/nfu/src/nfu_config.sv b/src/nfu/src/nfu_config.sv
+new file mode 100644
+index 0000000..1bc260c
+--- /dev/null
++++ b/src/nfu/src/nfu_config.sv
+@@ -0,0 +1,43 @@
++// TODO: Find the right disclaimer
++//
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 02.05.2021
++// Description: NOVIA Configuration registers
++
++module nfu_config #(
++  parameter nfu_pkg::nfu_features_t         Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned ACCS               = Features.Accelerators,
++  localparam int unsigned CONFIG_SELECTS     = Features.ConfigSelects,
++  localparam int unsigned CONFIGS            = Features.Configs
++
++)( 
++  input logic                       clk_i,
++  input logic                       rst_ni,
++  input logic [ACCS-1:0]            acc_i,
++  input logic [CONFIGS-1:0]         config_i,
++  // Input signals
++  // Input handshake
++  // Output signals
++  output logic [CONFIG_SELECTS-1:0] select_o
++  // Output handshake
++);
++
++  //reg [CONFIG_SELECTS-1:0] configs [ACCS-1:0][CONFIGS-1:0];
++  //initial $readmemh("src/nfu/nfu_select.dat", configs);
++  //
++  //assign select_o = configs[acc_i][config_i];
++
++  always_comb begin
++    case({acc_i,config_i}) 
++      8'b00000000 : select_o = 64'h8000000000000000;
++      8'b00000010 : select_o = 64'h4000000000000000;
++      default : select_o = 64'h0000000000000000;
++    endcase
++  end
++
++
++
++endmodule
+diff --git a/src/nfu/src/nfu_irf.sv b/src/nfu/src/nfu_irf.sv
+new file mode 100644
+index 0000000..54594fe
+--- /dev/null
++++ b/src/nfu/src/nfu_irf.sv
+@@ -0,0 +1,47 @@
++// TODO: Find the right disclaimer
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 02.05.2021
++// Description: NOVIA Input Register File (IRF)
++
++module nfu_irf #(
++  // NFU configuration
++  parameter nfu_pkg::nfu_features_t         Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned WIDTH      = Features.Width,
++  localparam int unsigned ACCS       = Features.Accelerators,
++  localparam int unsigned OPWIDTH    = Features.OpWidth,
++  localparam int unsigned NOPERANDS  = 2**OPWIDTH
++)( 
++  input logic                                             clk_i,
++  input logic                                             rst_ni,
++  // Input signals
++  input logic [WIDTH-1:0]                                 data_i,
++  input logic [OPWIDTH-1:0]                               addr_i,
++  input logic [ACCS-1:0]                                  acc_i,
++  // Input handshake
++  input logic                                             data_en_i,
++  // Output signals
++  output logic [NOPERANDS-1:0][WIDTH-1:0] data_o
++  // Output handshake
++);
++  logic [ACCS-1:0][NOPERANDS-1:0][WIDTH-1:0]        regfile;
++
++  
++  assign data_o = regfile[acc_i];
++  
++  always_latch begin : set_load
++    if(data_en_i) begin
++      // Substracting 1 since we never get 0 addr (disabled input)
++     regfile[acc_i][addr_i-1] = data_i;
++    end
++  end
++/*
++  always @(posedge clk_i) begin
++    if(data_en_i) begin
++      regfile[acc_i][addr_i-1] <= data_i;
++    end
++  end*/
++
++endmodule
+diff --git a/src/nfu/src/nfu_orf.sv b/src/nfu/src/nfu_orf.sv
+new file mode 100644
+index 0000000..4ca06b3
+--- /dev/null
++++ b/src/nfu/src/nfu_orf.sv
+@@ -0,0 +1,41 @@
++// TODO: Find the right disclaimer
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 02.05.2021
++// Description: NOVIA Output Register File (ORF)
++
++module nfu_orf #(
++  // NFU configuration
++  parameter nfu_pkg::nfu_features_t         Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned WIDTH      = Features.Width,
++  localparam int unsigned ACCS       = Features.Accelerators,
++  localparam int unsigned OPWIDTH    = Features.OpWidth,
++  localparam int unsigned NOPERANDS  = 2**OPWIDTH
++)( 
++  input logic                                            clk_i,
++  input logic                                            rst_ni,
++  // Input signals
++  input logic [NOPERANDS-1:0][WIDTH-1:0]                 data_i,
++  input logic [OPWIDTH-1:0]                              addr_i,
++  input logic [ACCS-1:0]                                 acc_i,
++  // Input handshake
++  input logic                                            data_en_i,
++  // Output signals
++  output logic [WIDTH-1:0]                               data_o
++  // Output handshake
++);
++  logic [ACCS-1:0][NOPERANDS-1:0][WIDTH-1:0]       regfile;
++
++  always_latch begin : set_store
++    regfile[acc_i] = data_i;
++  end
++/*
++  always @(posedge clk_i) begin
++    regfile[acc_i] = data_i;
++  end
++*/
++  assign data_o = regfile[acc_i][addr_i];
++
++endmodule
+diff --git a/src/nfu/src/nfu_pkg.sv b/src/nfu/src/nfu_pkg.sv
+new file mode 100644
+index 0000000..806740e
+--- /dev/null
++++ b/src/nfu/src/nfu_pkg.sv
+@@ -0,0 +1,29 @@
++// TODO: Find the right disclaimer
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 02.05.2021
++
++package nfu_pkg;
++
++  // NFU configuration
++  typedef struct packed {
++    int unsigned Width;
++    int unsigned OpWidth;
++    int unsigned Accelerators;
++    int unsigned Configs;
++    int unsigned ConfigSelects;
++    int unsigned NrShiftRegEntries;
++  } nfu_features_t;
++
++  // Default test config
++  localparam nfu_features_t RV64NFU = '{
++    Width:                  64,
++    OpWidth:                5,
++    Accelerators:           4,
++    Configs:                4,
++    ConfigSelects:          64,
++    NrShiftRegEntries:      3
++  };
++
++endpackage
+diff --git a/src/nfu/src/nfu_top.sv b/src/nfu/src/nfu_top.sv
+new file mode 100644
+index 0000000..7b62d88
+--- /dev/null
++++ b/src/nfu/src/nfu_top.sv
+@@ -0,0 +1,78 @@
++// TODO: Find the right disclaimer
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 29.04.2021
++// Description: Top level of the NOVIA Functional Unit (NFU)
++
++module nfu_top #(
++  // NFU configuration
++  parameter nfu_pkg::nfu_features_t Features =  nfu_pkg::RV64NFU,
++
++  localparam int unsigned WIDTH              = Features.Width,
++  localparam int unsigned ACCS               = Features.Accelerators,
++  localparam int unsigned CONFIGS            = Features.Configs,
++  localparam int unsigned CONFIG_SELECTS     = Features.ConfigSelects,
++  localparam int unsigned OPWIDTH            = Features.OpWidth,
++  localparam int unsigned NOPERANDS          = 2**OPWIDTH
++) (
++  input logic                       clk_i,
++  input logic                       rst_ni,
++  // Input signals 
++  input logic [OPWIDTH-1:0]         addr_irf_i, // IRF, ORF register addr
++  input logic [OPWIDTH-1:0]         addr_orf_i, // IRF, ORF register addr
++  input logic [WIDTH-1:0]           data_i,
++  input logic [ACCS-1:0]            acc_i,
++  input logic [CONFIGS-1:0]         config_i,
++  input logic                       irf_store_i,
++  input logic                       orf_read_i,
++  // Input handshake
++  // Output signals
++  output logic [WIDTH-1:0]          data_o
++  // Output handshake
++);
++
++  logic [NOPERANDS-1:0][WIDTH-1:0] data_irf_acc;
++  logic [NOPERANDS-1:0][WIDTH-1:0] data_acc_orf;
++  logic [CONFIG_SELECTS-1:0] select_config_acc;
++
++  // IRF
++  nfu_irf #() i_nfu_irf (
++    .clk_i,
++    .rst_ni,
++    .data_i,
++    .addr_i ( addr_irf_i ),
++    .acc_i,
++    .data_en_i ( irf_store_i ),
++    .data_o( data_irf_acc )
++  );
++  
++  // ORF
++  nfu_orf #() i_nfu_orf (
++    .clk_i,
++    .rst_ni,
++    .data_i ( data_acc_orf ),
++    .addr_i ( addr_orf_i ),
++    .acc_i,
++    .data_en_i ( orf_read_i ),
++    .data_o
++  );
++  
++  // Config Regfiles
++  nfu_config #() i_nfu_config (
++    .clk_i,
++    .rst_ni,
++    .acc_i,
++    .config_i,
++    .select_o ( select_config_acc )
++  );
++
++  // NFU Accelerators
++  nfu_acc #() i_nfu_acc (
++    .acc_i,
++    .data_i( data_irf_acc ),
++    .data_o( data_acc_orf ),
++    .select_i( select_config_acc )
++  );
++
++endmodule
+diff --git a/src/nfu/src_files.yml b/src/nfu/src_files.yml
+new file mode 100644
+index 0000000..fcc2dc9
+--- /dev/null
++++ b/src/nfu/src_files.yml
+@@ -0,0 +1,15 @@
++nfu:
++  incdirs: [
++  ]
++  files: [
++    src/nfu_top.sv,
++    src/nfu_irf.sv,
++    src/nfu_orf.sv,
++    src/nfu_config.sv,
++    src/nfu_acc.sv,
++    src/nfu_acc_wrap.sv,
++    src/accelerators/popcount_inline.sv,
++    src/accelerators/viterbi_inline.sv,
++    src/accelerators/fft_inline.sv,
++    src/accelerators/fftfmcw_inline.sv
++  ]
+diff --git a/src/nfu_wrap.sv b/src/nfu_wrap.sv
+new file mode 100644
+index 0000000..ddbc0d8
+--- /dev/null
++++ b/src/nfu_wrap.sv
+@@ -0,0 +1,145 @@
++// TODO: Find the right disclaimer
++// Copyright 2021 IBM Research Thomas J. Watson. 
++//
++// Author: David Trilla, IBM Research Thomas J. Watson Center
++// Date: 28.04.2021
++// Description: Wrapper for the Novia functional unit (NFU)
++
++module nfu_wrap import ariane_pkg::*; (
++  input logic                                            clk_i,
++  input logic                                            rst_ni,
++  // Input signals
++  input fu_data_t                                        fu_data_i,
++  input scoreboard_entry_t [NR_COMMIT_PORTS-1:0]         commit_instr_i,
++  input logic [NR_COMMIT_PORTS-1:0]                      commit_ack_i,
++  // Input handshake
++  input logic                                            nfu_valid_i,
++  output logic                                           nfu_ready_o,
++  // Output signals
++  //output exception_t                                   nfu_exception_o,
++  output logic [63:0]                         nfu_result_o
++  // Output handshake
++  //output logic                                         nfu_valid_o
++);
++
++  localparam nfu_pkg::nfu_features_t NFU_FEATURES        = nfu_pkg::RV64NFU;
++  localparam int unsigned NR_SHIFT_REG_ENTRIES           = 3;
++  localparam int unsigned WIDTH                          = NFU_FEATURES.Width;
++  localparam int unsigned OPWIDTH                        = NFU_FEATURES.OpWidth;
++  localparam int unsigned NR_SHIFT_REG_WIDTH             = NR_SHIFT_REG_ENTRIES*OPWIDTH-1;
++  localparam int unsigned ACCS                           = NFU_FEATURES.Accelerators;
++  localparam int unsigned REG_ENTRIES_BITS               = $clog2(NR_SHIFT_REG_ENTRIES);
++  localparam int unsigned CONFIGS = NFU_FEATURES.Configs;
++
++  logic irf_store_valid;
++  logic orf_read_valid;
++  logic exec_valid;
++  logic [ACCS-1:0] acc;
++  logic [OPWIDTH-1:0] addr_irf, addr_orf;
++  logic [WIDTH-1:0] data;
++  logic [CONFIGS-1:0] conf;
++
++  logic pending, ready0, ready1;
++  logic [WIDTH-1:0] BufferRes;
++
++  logic [NR_SHIFT_REG_ENTRIES-1:0][OPWIDTH-1:0] ShiftReg;
++  logic [NR_SHIFT_REG_ENTRIES-1:0][WIDTH-1:0] ShiftRegPC;
++  assign nfu_ready_o = 1'b1;
++
++
++
++  nfu_top #(
++
++  ) i_nfu_top (
++    .clk_i,
++    .rst_ni,
++    .addr_irf_i( addr_irf ),
++    .addr_orf_i( addr_orf ),
++    .data_i( data ),
++    .acc_i( acc ),
++    .irf_store_i( irf_store_valid ),
++    .orf_read_i( orf_read_valid ),
++    .config_i( conf ),
++    .data_o( nfu_result_o )
++  );
++
++  // Shift Register Window
++  always_ff @(posedge clk_i or negedge rst_ni) begin : shift_reg
++    if(~rst_ni) begin 
++      ShiftReg <= '0;
++      ShiftRegPC <= '0;
++    end else begin
++      // Shift Register
++      if(nfu_valid_i) begin
++      	acc <= fu_data_i.imm[OPWIDTH-1:0];
++      end
++      if(nfu_valid_i && fu_data_i.operator == ariane_pkg::SET_LOAD_NFU) begin
++        // Adding a single 0 position to not count the commit of the
++        // SET_LOAD instructions
++        ShiftReg <= {fu_data_i.imm[NR_SHIFT_REG_WIDTH+OPWIDTH:OPWIDTH]};
++        ShiftRegPC <= {fu_data_i.operand_a+12,
++                       fu_data_i.operand_a+8,
++                       fu_data_i.operand_a+4};
++      end
++      else begin
++        if(ready0 || ready1) begin
++          for (int j = 1; j < NR_SHIFT_REG_ENTRIES; j++) begin
++            ShiftReg[j-1][OPWIDTH-1:0] <= ShiftReg[j][OPWIDTH-1:0];
++            ShiftRegPC[j-1][WIDTH-1:0] <= ShiftRegPC[j][WIDTH-1:0];
++          end
++          ShiftReg[NR_SHIFT_REG_ENTRIES-1][OPWIDTH-1:0] <= '0;
++          ShiftRegPC[NR_SHIFT_REG_ENTRIES-1][WIDTH-1:0] <= '0;
++        
++          if((ready0 &&  ready1) | pending ) begin
++            BufferRes <= commit_instr_i[1].result;
++            pending <= 1'b1;
++          end
++        end else if(pending) begin
++          pending <= 1'b0;
++          BufferRes <= '0;
++        end
++      end
++    end
++  end
++
++  always_comb begin : decoder
++    irf_store_valid = 1'b0;
++    orf_read_valid = 1'b0;
++    exec_valid = 1'b0;
++        
++    addr_irf = ShiftReg[0];
++    ready0 = commit_ack_i[0] && (ShiftRegPC[0] == commit_instr_i[0].pc);
++    ready1 = commit_ack_i[1] && (ShiftRegPC[0] == commit_instr_i[1].pc);
++    
++    // Set valid signals
++    if(addr_irf != 0 | pending) begin
++      irf_store_valid = 1'b1;
++      if(pending) begin
++        data = BufferRes;
++      end else if(ready0) begin
++        data = commit_instr_i[0].result;
++      end
++      else if (ready1) begin
++        data = commit_instr_i[1].result;
++      end
++    end
++    if(nfu_valid_i) begin
++      case(fu_data_i.operator)
++        SET_LOAD_NFU: begin
++        end
++        EXEC_NFU: begin
++          conf = fu_data_i.imm[2*OPWIDTH-2:OPWIDTH];
++        end
++        POP_NFU: begin            
++          orf_read_valid = 1'b1;
++          addr_orf = fu_data_i.imm[3*OPWIDTH-1:2*OPWIDTH]; 
++        end
++        default: begin
++          //TODO: default:  This should raise an exception
++        end
++      endcase
++    end
++  end
++
++
++endmodule
+diff --git a/tb/ariane_soc_pkg.sv b/tb/ariane_soc_pkg.sv
+index 5036162..6679fcd 100644
+--- a/tb/ariane_soc_pkg.sv
++++ b/tb/ariane_soc_pkg.sv
+@@ -89,7 +89,8 @@ package ariane_soc;
+     SwapEndianess:          1'b0,
+     // debug
+     DmBaseAddress:          DebugBase,
+-    NrPMPEntries:           8
++    NrPMPEntries:           8,
++    NFU_PRESENT:            1
+   };
+ 
+ endpackage
