@@ -1,7 +1,10 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
+source $DIR/novia.conf
+
 export ARIANE_TOP=$DIR/ariane_core
 export RVBINUTILS_TOP=$DIR/riscv-binutils
+export VERILATOR_TOP=$DIR/verilator
 
 export LLVM_COMPILER_PATH=$DIR/llvm-project/build/bin
 export LLVM_COMPILER=clang
