@@ -25,6 +25,11 @@ git checkout f356740
 git apply $BASEDIR/patches/binutils.patch
 cd ../
 
+git clone git@github.com:verilator/verilator.git $VERILATOR_TOP
+cd $VERILATOR_TOP
+cd ../
+
+$BASEIDR/scripts/compile_tools.sh
 $BASEDIR/scripts/compile_graphviz.sh
 $BASEDIR/scripts/compile_llvm_minimal.sh
 
