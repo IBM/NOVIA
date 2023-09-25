@@ -1,10 +1,6 @@
 #!/bin/bash
 cd $ARIANE_TOP
-mkdir -p build
-cd build
-../configure --prefix=$ARIANE_TOP/build/
-make -j $NUM_THREADS
-make -j $NUM_THREADS install
+make verilate
 
 cd $RVBINUTILS_TOP
 mkdir -p build
@@ -15,8 +11,7 @@ make -j $NUM_THREADS install
 
 cd $VERILATOR_TOP
 mkdir -p build
-cd build
-../autoconf
+autoconf
 ../configure --prefix=$VERILATOR_TOP/build/
 make -j $NUM_THREADS
 make -j $NUM_THREADS install

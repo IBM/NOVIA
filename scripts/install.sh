@@ -15,7 +15,8 @@ cd ../
 
 git clone https://github.com/openhwgroup/cva6.git $ARIANE_TOP 
 cd $ARIANE_TOP
-git checkout 6000e32b
+git submodule update --init --recursive
+git checkout 6000e32
 git apply $BASEDIR/patches/ariane.patch
 cd ../
 
@@ -27,6 +28,7 @@ cd ../
 
 git clone git@github.com:verilator/verilator.git $VERILATOR_TOP
 cd $VERILATOR_TOP
+git checkout stable
 cd ../
 
 $BASEIDR/scripts/compile_tools.sh
