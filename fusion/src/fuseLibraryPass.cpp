@@ -42,7 +42,7 @@ static cl::opt<int> inlineSteps("inlStep",
     cl::desc("Fraction of the number of functions to inline"),cl::Optional);
 static cl::opt<string> bbFileName("bbs",
     cl::desc("Specify file with BB names to merge"));
-static cl::opt<string> visualDir("graph_dir",
+static cl::opt<string> visDir("graph_dir",
     cl::desc("Directory for graphviz files"),cl::Optional);
 static cl::opt<int> visLev("visualLevel",
     cl::desc("Level of visualization output:\n"
@@ -54,6 +54,9 @@ static cl::opt<int> visLev("visualLevel",
       "5: Original and Split BB DFGs\n"
       "6: Merged and Split BB DFGs\n"
       "7: All BB DFGs"),cl::Optional);
+static cl::opt<string> visForm("visualFormat",
+    cl::desc("File format of generated graphs\n"
+      "Options: png/dot"),cl::Optional,cl::init("png"));
 static cl::opt<bool> debug("dbg",
     cl::desc("Generate bitcode with redundant original BBs to detect errors in"
       " the inline/offload process"), cl::Optional);
@@ -175,9 +178,8 @@ namespace {
       }
       
       for(auto bb : bbs){
-        if(!visualDir.empty() and visLev&1)
-          drawBBGraph(bb.second,(char*)("o"+bb.second->getName().str()).c_str(),
-              visualDir);
+        if(!visDir.empty() and visLev&1)
+          drawBBGraph(bb.second,(char*)("o"+bb.second->getName().str()).c_str(),visDir,visForm);
         if(!bb.second){
           errs() << "Could not find BB: " << bb.first << "\n";
           exit(0);
@@ -448,9 +450,9 @@ namespace {
           getSubgraphMetrics(&bbList,&prebb,NULL,vCandidates[spl].second,
               &profileMap,&iterMap,&subgraphs,&data,&tseq_sub,&tseq_block_aux,&tmp_areas);
 
-          if(!visualDir.empty() and visLev&2)
+          if(!visDir.empty() and visLev&2)
             drawBBGraph(vCandidates[spl].second,
-                (char*)(("m"+to_string(spl*100)).c_str()),visualDir,&subgraphs);
+                (char*)(("m"+to_string(spl*100)).c_str()),visDir,visForm,&subgraphs);
           
           for(int i=0;i<subgraphs.size();++i){
             if(subgraphs[i]->size() > 0){
@@ -505,9 +507,9 @@ namespace {
                 for(auto name: subset){
                   list_bbs[list_bbs.size()-1].push_back(name);
                 }
-                if(!visualDir.empty() and visLev&4)
-                  drawBBGraph(splitBB,(char*)to_string(spl*100+i).c_str(),visualDir);
-                  //drawBBGraph(splitBB,(char*)splitBB->getName().c_str(),visualDir);
+                if(!visDir.empty() and visLev&4)
+                  drawBBGraph(splitBB,(char*)to_string(spl*100+i).c_str(),visDir,visForm);
+                  //drawBBGraph(splitBB,(char*)splitBB->getName().c_str(),visDir);
                 total_subgraphs++;
               
                 // Stats for partial sequential times of inlined BBs

@@ -23,7 +23,7 @@ string rgb2hex(int r, int g, int b, bool with_head) {
   return ss.str();
 }
 
-void drawBBGraph(BasicBlock *BB,char *file,string dir){
+void drawBBGraph(BasicBlock *BB,char *file,string dir,string visForm){
   struct stat buffer;
   map<Instruction*,set<Instruction*> *> rawDeps;
   map<Instruction*,set<Instruction*> *> warDeps;
@@ -186,7 +186,7 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir){
   }
 
   gvLayout(gvc,G,"dot");
-  gvRenderFilename(gvc,G,"png",string(dir+"/"+string(file)+".png").c_str());
+  gvRenderFilename(gvc,G,visForm,string(dir+"/"+string(file)+"."+visForm).c_str());
   gvFreeLayout(gvc,G);
   agclose(G);
   gvFreeContext(gvc);
@@ -198,7 +198,7 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir){
  *
  * @param BB BasicBlock to Visualize
  */
-void drawBBGraph(FusedBB *fBB,char *file,string dir,
+void drawBBGraph(FusedBB *fBB,char *file,string dir,string visForm,
     vector<list<Instruction*> *> * subgraphs){
   struct stat buffer;
   BasicBlock *BB = fBB->getBB();
@@ -401,7 +401,7 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,
   }
 
   gvLayout(gvc,G,"dot");
-  gvRenderFilename(gvc,G,"png",string(dir+"/"+string(file)+".png").c_str());
+  gvRenderFilename(gvc,G,visForm,string(dir+"/"+string(file)+"."+visForm).c_str());
   gvFreeLayout(gvc,G);
   agclose(G);
   gvFreeContext(gvc);

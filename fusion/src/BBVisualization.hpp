@@ -42,5 +42,5 @@
 using namespace llvm;
 using namespace std;
 
-void drawBBGraph(BasicBlock*,char*,string);
-void drawBBGraph(FusedBB*,char*,string,vector<list<Instruction*>*>* subgraphs = NULL);
+void drawBBGraph(BasicBlock*,char*,string,string);
+void drawBBGraph(FusedBB*,char*,string,string,vector<list<Instruction*>*>* subgraphs = NULL);

@@ -9,9 +9,17 @@ else
 fi
 echo "############################################################################################"
 
-$LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libfusionlib.so -mergeBBList -bbs \
-  "data/bblist_inl.txt" --dynInf "data/weights_inl.txt" --graph_dir imgs --visualLevel 7 \
-  --nfus "data/nfu.txt" < $name_inl > $name_novia
+if [ -z $NOVIA_MODE ]; then
+  $LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libfusionlib.so -mergeBBList -bbs \
+  "data/bblist_inl.txt" --dynInf "data/weights_inl.txt" --graph_dir imgs \
+  --visualFormat $NOVIA_VIZ_FORMAT --visualLevel $NOVIA_VIZ_LVL --nfus "data/nfu.txt" \
+  < $name_inl > $name_novia
+else
+  $LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libfusionlib.so -mergeBBList -bbs \
+  "data/bblist_inl.txt" --dynInf "data/weights_inl.txt" --graph_dir imgs --dbg \
+  --visualFormat $NOVIA_VIZ_FORMAT --visualLevel $NOVIA_VIZ_LVL --nfus "data/nfu.txt" \
+  < $name_inl > $name_novia
+fi
 
 if [ ! -z $VERBOSE ]; then
   echo "Generated inlined bitcode file ($name_novia)"

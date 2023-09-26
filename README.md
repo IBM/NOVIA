@@ -48,7 +48,7 @@ This requires the dependencies mentioned in the previous section, and will insta
 `docker build . -t novia:v2`
 
 ## Docker Run
-`docker run -it novia:v1 /bin/bash`
+`docker run -it novia:v2 /bin/bash`
 
 # Getting Started
 NOVIA comes with several automated examples in the subdirectory fusion/examples. The examples contain the base source code, a makefile that generates the input bitcode for novia and a configuration file needed for novia to compile bitcode (mainly the libraries and linking flags needed).
