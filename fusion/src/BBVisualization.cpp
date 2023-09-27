@@ -186,7 +186,7 @@ void drawBBGraph(BasicBlock *BB,char *file,string dir,string visForm){
   }
 
   gvLayout(gvc,G,"dot");
-  gvRenderFilename(gvc,G,visForm,string(dir+"/"+string(file)+"."+visForm).c_str());
+  gvRenderFilename(gvc,G,visForm.c_str(),string(dir+"/"+string(file)+"."+visForm).c_str());
   gvFreeLayout(gvc,G);
   agclose(G);
   gvFreeContext(gvc);
@@ -401,7 +401,7 @@ void drawBBGraph(FusedBB *fBB,char *file,string dir,string visForm,
   }
 
   gvLayout(gvc,G,"dot");
-  gvRenderFilename(gvc,G,visForm,string(dir+"/"+string(file)+"."+visForm).c_str());
+  gvRenderFilename(gvc,G,visForm.c_str(),string(dir+"/"+string(file)+"."+visForm).c_str());
   gvFreeLayout(gvc,G);
   agclose(G);
   gvFreeContext(gvc);
