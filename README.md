@@ -70,6 +70,11 @@ Type `novia -h` for additional help.
    2. Run the novia tool ( `novia *bitcode_file*` ) [`source env.sh` or use the full path to the tool in fusion/bin]
    3. The tool will generate a **novia** folder containing the intermediatte bitcode files of the analysis
 
+## Further Operation Instructions
+The tool is made so that it reuses as much generated data as possible. This means that once we run the tool and the **novia** folder is generated, reruning the tool won't update the bitcode files or the analysis, in case we want to change the configuration. To force the tool to regenerate new files or data for analysis we must first remove the files we want to regenerate from the **novia** folder.
+
+By default, on the first run, the tool will generate either instrumentation or inline functions for all the detected viable inline accelerators. This list of implemented accelerators will be dumped in **nfu.txt**. We can remove split candidates from **nfu.txt** and rerun the tool (remember to delete the final bitcode file in novia/output/*_novia.bc) to generate the new bitcode file without the removed inline accelerators.
+
 # Directory Structure
 
 - fusion: novia related scripts and files
@@ -98,6 +103,18 @@ When the novia automated analysis script is executed on a bitcode file, the foll
     - **io_overhead.csv**: Metrics refering to input and output variables for the accelerators
     - **stats.csv**: Other metrics
     - **source.log**: Location in source code of basic blocks and accelerators
+    - **nfu.txt**: List of inline accelerators to be implemented in the NFU (All by default)
   - novia/imgs: DFGs of the analyzed basic blocks, merged ISs and final accelerator candidates in .png format
   - novia/bin: Binaries compiled from bitcode files
 
+# Configuration files
+
+NOVIA has several starter and intermediate scripts that can be configured to tailor the analysis. Although the tool is implemented so only the frontend `novia` script is necessary to operate the tool, certain options and default values can be configured to adjust NOVIA operation. We provide a brief description of each of those scripts. The most important one being `novia.conf` which defines the basic configuration.
+
+- novia.conf: **Defines the configuration that NOVIA will use. Options available are documented in the file**
+- fusion/analysis/scripts/novia.sh: Main novia script.
+- fusion/analysis/scripts/analysis.sh: Executes the pre-merge and split process.
+- fusion/analysis/scripts/merge.sh: Executes the merge and split process.
+- fusion/analysis/scripts/reuse.sh:
+- fusion/analysis/scripts/preanalysis.py:
+- fusion/analysis/scripts/postanalysis.py:

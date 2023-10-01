@@ -1100,7 +1100,7 @@ bool FusedBB::insertInlineCall(Function *F, map<Value*, Value*> *VMap, int nfu, 
         if(E->count(BB)){
           Value *outGEPData, *out;
           if(dbg){
-            outGEPData = Builder.CreateStructGEP(cast<StructType>(outStruct->getType()),outStruct,pos);
+            outGEPData = Builder.CreateStructGEP(outStruct->getType()->getPointerElementType(),outStruct,pos);
             out = Builder.CreateLoad((*(*E)[BB]->begin())->getType(),outGEPData);
           }
           for(auto outV : *(*E)[BB]){

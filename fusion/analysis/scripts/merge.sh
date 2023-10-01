@@ -7,6 +7,11 @@ if [ -f $name_novia ]; then
 else
   echo ""
 fi
+if [ -f data/nfu.txt ]; then
+  echo "Using data/nfu.txt list to implement inline accelerators"
+else
+  echo "NFU file does not exist, implementing all inline accelerators"
+fi
 echo "############################################################################################"
 
 if [ -z $NOVIA_MODE ]; then

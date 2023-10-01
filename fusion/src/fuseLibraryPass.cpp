@@ -136,6 +136,7 @@ namespace {
       }
       // Read the NFUs to Implement;
       set<int> nfus;
+      bool nfuall=false; // NFU not present, implement all and dump file
       fstream nfufile;
       string nfu_n;
       nfufile.open(nfuFilename);
@@ -144,7 +145,8 @@ namespace {
           nfus.insert(stoi(nfu_n));
       else{
         errs() << "NFU Implementation File missing or not specified"
-                 "; No NFU will be implemented. Continuing.\n";
+                 "; All NFUs will be implemented. Continuing.\n";
+        nfuall = true;
       }
             
       // If no weights are defined, use equal weights for everybody
@@ -494,7 +496,10 @@ namespace {
                 Function *fSpl;
                 fSpl = splitBB->createInline(&M);
                 splitBB->getDebugLoc(debug_log);
-                if(nfus.count(spl*100+i) or debug){
+                if(nfus.count(spl*100+i) or nfuall){
+                  // Forcing add of all nfus, add the NFU to the list of implemented nfus
+                  if(nfuall and !nfus.count(spl*100+i))
+                    nfus.insert(spl*100+i);
                   splitBB->insertInlineCall(fSpl,&VMap,nfu++,debug);
                   splitBB->getConfigString(config_log);
                 }
@@ -684,6 +689,15 @@ namespace {
         debuglog << debug_log.str() << "\n";
         debuglog.close();
         
+        if(nfuall){
+          raw_fd_ostream nfulog("data/nfu.txt",EC);
+          for(int i : nfus)
+            nfulog << i << "\n";
+          nfulog.close();
+        }
+
+
+
         raw_fd_ostream configlog("output/nfu.select.data",EC);
         configlog << config_log.str();
         stringstream fillstring;
@@ -691,8 +705,8 @@ namespace {
           for(int j = 0; j < MAX_CONF; j++)
             fillstring << std::setw(16) << std::setfill('0') << std::hex << 0 << '\n';
         configlog << fillstring.str();
-
         configlog.close();
+
         
 
         ////////////////////////
