@@ -14,7 +14,7 @@ else
 fi
 echo "############################################################################################"
 
-if [ -z $NOVIA_MODE ]; then
+if [ $NOVIA_MODE -eq 0 ]; then
   $LLVM_BIN/opt -enable-new-pm=0 -load $FUSE_LIB/libfusionlib.so -mergeBBList -bbs \
   "data/bblist_inl.txt" --dynInf "data/weights_inl.txt" --graph_dir imgs \
   --visualFormat $NOVIA_VIZ_FORMAT --visualLevel $NOVIA_VIZ_LVL --nfus "data/nfu.txt" \
