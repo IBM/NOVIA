@@ -25,6 +25,19 @@ numpages = {15}
 }
 ```
 
+# Notes on Repo Status
+
+NOVIA 1.5 contains a partial status update on key elements of NOVIA. Mainly includes patches to llvm-13.0, the RISC-V Ariane core as well as gcc-binutils to enable NOVIA/NFU instructions to be lowered to binary and be executed in RISC-V Ariane cores.
+
+novia.conf file is also added that handles several configuration aspects of the tool.
+
+The contents of diff patches can be applied to their respective repos:
+* ariane.patch: Changes to RISC-V Ariane core, instantiantes de NFU, that allows to easily swap inline accelerators, contains few example accelerators
+* binutils.path: Changes to gcc-binutils
+* llvm.patch: This  is a partial patch and it is not completed. The changes allow llvm to generate NFU instructions and binaries directly from NOVIA analysis when NOVIA_MODE=0
+
+Check scripts/install.sh for how to apply the patches
+
 # Install
 ## Dependencies
 * cmake ninja-build gcc g++ (for build)
