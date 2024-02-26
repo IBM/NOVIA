@@ -2,7 +2,7 @@
 
 NOVIA: A Framework for Discovering Non-Conventional Inline Accelerators, is an LLVM-based toolset that allows for automatic recognition, instantiation and code instrumentations of inline accelerators. NOVIA uses unified bitcode files to analyze a workload and propose inline accelerators to the architect.
 
-The current NOVIA release does not provide the hardware support [NOVIA Functional Unit (NFU)] or the compiler support (clang patch) to compile NFU instructions to RISC-V. Future commits will provide those.
+The current NOVIA release does not provide the hardware support [NOVIA Functional Unit (NFU)] or the compiler support (clang patch) to compile NFU instructions to RISC-V. Future commits will provide those (Published in novia 1.5.0  branch with limited functionality).
 
 https://dl.acm.org/doi/abs/10.1145/3466752.3480094
 
